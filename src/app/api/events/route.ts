@@ -22,6 +22,8 @@ export async function POST(req: NextRequest) {
 				antiSnipeExtensionSeconds: number;
 				roundAllocations: Record<string, number>;
 				additiveCombos?: boolean;
+				payoutBasis?: string;
+				includeAnteInPot?: boolean;
 			};
 			players: Array<{ name: string; handle?: string }>;
 		} = body;
@@ -46,6 +48,8 @@ export async function POST(req: NextRequest) {
 						antiSnipeExtensionSeconds: ruleSet.antiSnipeExtensionSeconds,
 						roundAllocations: ruleSet.roundAllocations,
 						additiveCombos: ruleSet.additiveCombos ?? true,
+						payoutBasis: (ruleSet.payoutBasis as any) ?? "total_pot",
+						includeAnteInPot: ruleSet.includeAnteInPot ?? true,
 					},
 				},
 				players: {
@@ -89,5 +93,4 @@ export async function POST(req: NextRequest) {
 		}, { status: 500 });
 	}
 }
-
 

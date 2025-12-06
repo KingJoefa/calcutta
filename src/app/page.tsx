@@ -72,11 +72,13 @@ export default function Home() {
 									data.get("antiSnipeExtensionSeconds") || 10,
 								),
 								roundAllocations: {
-									wildcard: 0.1,
-									divisional: 0.2,
-									conference: 0.3,
-									superbowl: 0.4,
+									wildcard: 0.04,
+									divisional: 0.06,
+									conference: 0.12,
+									superbowl: 0.28,
 								},
+								payoutBasis: "total_pot",
+								includeAnteInPot: true,
 							},
 							players: finalPlayers,
 						};

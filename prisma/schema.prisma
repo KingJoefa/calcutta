@@ -34,6 +34,11 @@ enum LedgerType {
   reversal
 }
 
+enum PayoutBasis {
+  team_price   // payouts are pct of each team's winning bid
+  total_pot    // payouts are pct of total pot (bids + ante)
+}
+
 model Event {
   id          String     @id @default(cuid())
   name        String
@@ -47,6 +52,7 @@ model Event {
   lots        Lot[]
   bids        Bid[]
   sales       Sale[]
+  teamResults TeamResult[]
   ledger      LedgerEntry[]
   snapshots   Snapshot[]
   auditLogs   AuditLog[]
@@ -67,16 +73,17 @@ model Player {
 }
 
 model Team {
-  id         String  @id @default(cuid())
-  event      Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  id         String      @id @default(cuid())
+  event      Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
   eventId    String
   name       String
   seed       Int?
   region     String?
   bracket    String?
   odds       Json?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime    @default(now())
   lot        Lot?
+  result     TeamResult?
 
   @@index([eventId])
 }
@@ -89,7 +96,9 @@ model RuleSet {
   minIncrementCents          Int
   auctionTimerSeconds        Int
   antiSnipeExtensionSeconds  Int
-  roundAllocations           Json    // e.g., { \"wildcard\": 0.1, \"divisional\": 0.2, ... } sums to 1.0
+  roundAllocations           Json    // e.g., { \"wildcard\": 0.04, \"divisional\": 0.06, ... } sums to 1.0
+  payoutBasis                PayoutBasis @default(team_price)
+  includeAnteInPot           Boolean @default(true)
   additiveCombos             Boolean @default(true)
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
@@ -140,6 +149,19 @@ model Sale {
   playerId    String
   amountCents Int
   finalizedAt DateTime @default(now())
+}
+
+model TeamResult {
+  id           String   @id @default(cuid())
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId      String
+  team         Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId       String   @unique
+  roundResults Json     // e.g., { \"wildcard\": \"W\", \"divisional\": \"L\" } (W/L/BYE/OUT)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([eventId])
 }
 
 model LedgerEntry {
