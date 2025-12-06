@@ -1,0 +1,178 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EventStatus {
+  draft
+  live
+  closed
+}
+
+enum LotStatus {
+  pending
+  open
+  sold
+}
+
+enum LedgerType {
+  ante
+  sale
+  refund
+  adjustment
+  reversal
+}
+
+model Event {
+  id          String     @id @default(cuid())
+  name        String
+  rngSeed     String
+  status      EventStatus @default(draft)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  ruleSet     RuleSet?
+  players     Player[]
+  teams       Team[]
+  lots        Lot[]
+  bids        Bid[]
+  sales       Sale[]
+  ledger      LedgerEntry[]
+  snapshots   Snapshot[]
+  auditLogs   AuditLog[]
+}
+
+model Player {
+  id        String  @id @default(cuid())
+  event     Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId   String
+  name      String
+  handle    String?
+  createdAt DateTime @default(now())
+  bids      Bid[]
+  sales     Sale[]
+  ledger    LedgerEntry[]
+
+  @@index([eventId])
+}
+
+model Team {
+  id         String  @id @default(cuid())
+  event      Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId    String
+  name       String
+  seed       Int?
+  region     String?
+  bracket    String?
+  odds       Json?
+  createdAt  DateTime @default(now())
+  lot        Lot?
+
+  @@index([eventId])
+}
+
+model RuleSet {
+  id                         String  @id @default(cuid())
+  event                      Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId                    String  @unique
+  anteCents                  Int
+  minIncrementCents          Int
+  auctionTimerSeconds        Int
+  antiSnipeExtensionSeconds  Int
+  roundAllocations           Json    // e.g., { \"wildcard\": 0.1, \"divisional\": 0.2, ... } sums to 1.0
+  additiveCombos             Boolean @default(true)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+}
+
+model Lot {
+  id            String    @id @default(cuid())
+  event         Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId       String
+  team          Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId        String    @unique
+  orderIndex    Int
+  status        LotStatus @default(pending)
+  openedAt      DateTime?
+  closesAt      DateTime?
+  currentBidCents Int      @default(0)
+  highBidderId  String? // playerId
+  bids          Bid[]
+  sale          Sale?
+
+  @@unique([eventId, orderIndex])
+  @@index([eventId])
+}
+
+model Bid {
+  id          String   @id @default(cuid())
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId     String
+  lot         Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  lotId       String
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  playerId    String
+  amountCents Int
+  createdAt   DateTime @default(now())
+
+  @@index([eventId])
+  @@index([lotId])
+  @@index([playerId])
+}
+
+model Sale {
+  id          String   @id @default(cuid())
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId     String
+  lot         Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  lotId       String   @unique
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  playerId    String
+  amountCents Int
+  finalizedAt DateTime @default(now())
+}
+
+model LedgerEntry {
+  id          String     @id @default(cuid())
+  event       Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId     String
+  player      Player?    @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  playerId    String?
+  type        LedgerType
+  amountCents Int
+  note        String?
+  refId       String?
+  createdAt   DateTime   @default(now())
+
+  @@index([eventId])
+  @@index([playerId])
+  @@index([type])
+}
+
+model Snapshot {
+  id        String   @id @default(cuid())
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId   String
+  createdAt DateTime @default(now())
+  data      Json
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  event     Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  eventId   String?
+  actor     String?
+  type      String
+  details   Json?
+  createdAt DateTime @default(now())
+}

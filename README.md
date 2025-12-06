@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NFL Calcutta Auction
 
-## Getting Started
+A real-time NFL Calcutta auction web application built with Next.js 16, PostgreSQL, and WebSockets.
 
-First, run the development server:
+## Quick Start
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. **Setup environment**:
+   ```bash
+   bash setup-env.sh  # Creates .env file (update DATABASE_URL)
+   ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. **Setup database**:
+   ```bash
+   npm run prisma:generate  # Generate Prisma client
+   npx prisma db push        # Create database tables
+   ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. **Run development server**:
+   ```bash
+   npm run dev
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. **Open**: [http://localhost:3000](http://localhost:3000)
+
+## Project Status
+
+📋 **See [PROJECT_STATUS.md](./PROJECT_STATUS.md) for detailed status, features, and updates.**
+
+## Key Features
+
+- ✅ Real-time auction management with WebSocket updates
+- ✅ Separate views for Host, Presenter, and Audience
+- ✅ Dark command center dashboard for presenters
+- ✅ Clean, mobile-responsive audience view
+- ✅ Team import and deterministic randomization
+- ✅ Anti-snipe timer extensions
+- ✅ Complete financial ledger and recap export
+
+## Views
+
+- **Home** (`/`) - Create new auction events
+- **Host Console** (`/host/[eventId]`) - Manage auction, import teams
+- **Presenter Dashboard** (`/presenter/[eventId]`) - Control center with timer and controls
+- **Audience View** (`/audience/[eventId]`) - Public view for bidding
+
+## Tech Stack
+
+- Next.js 16.0.1 (App Router)
+- PostgreSQL + Prisma ORM
+- WebSocket (real-time updates)
+- TypeScript
 
 ## Learn More
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Prisma Documentation](https://www.prisma.io/docs)
