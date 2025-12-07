@@ -29,8 +29,8 @@ A real-time NFL Calcutta auction web application built with Next.js 16, PostgreS
 ## Key Features
 
 - ✅ Real-time auction management with WebSocket updates
-- ✅ Separate views for Host, Presenter, and Audience
-- ✅ Dark command center dashboard for presenters
+- ✅ Two-view architecture: Presenter Dashboard (host/admin) and Audience View (public bidding)
+- ✅ Dark command center dashboard with unified host controls
 - ✅ Clean, mobile-responsive audience view
 - ✅ Team import and deterministic randomization
 - ✅ Anti-snipe timer extensions
@@ -39,8 +39,7 @@ A real-time NFL Calcutta auction web application built with Next.js 16, PostgreS
 ## Views
 
 - **Home** (`/`) - Create new auction events
-- **Host Console** (`/host/[eventId]`) - Manage auction, import teams
-- **Presenter Dashboard** (`/presenter/[eventId]`) - Control center with timer and controls
+- **Presenter Dashboard** (`/presenter/[eventId]`) - Unified host/admin control center (team import, auction management, timer controls)
 - **Audience View** (`/audience/[eventId]`) - Public view for bidding
 
 ## Tech Stack

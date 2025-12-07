@@ -1,7 +1,7 @@
 # NFL Calcutta Auction - Project Status Digest
 
 ## Overview
-A real-time NFL Calcutta auction web application built with Next.js 16, PostgreSQL, Prisma, and WebSockets. The system enables live auction management with separate views for hosts, presenters, and audience members.
+A real-time NFL Calcutta auction web application built with Next.js 16, PostgreSQL, Prisma, and WebSockets. The system enables live auction management with two views: Presenter Dashboard (host/admin control) and Audience View (public bidding).
 
 ---
 
@@ -18,13 +18,14 @@ A real-time NFL Calcutta auction web application built with Next.js 16, PostgreS
 - **Status**: All pages and API routes compatible with Next.js 16
 
 ### ✅ UI Redesign - Presenter Dashboard
-- **New**: Dark, low-glare command center layout
+- **New**: Dark, low-glare command center layout (unified host/admin view)
 - **Features**:
   - Fixed left control panel (400px) with current team, bid amount, timer, and host controls
   - Right-side real-time activity feed showing bid history
   - Large, legible typography optimized for screen sharing
   - Timer countdown with visual warnings (<10s turns red)
   - Host-only controls: Open Lot, Pause/Resume Timer, Accept Bid & Advance, Undo Last Sale
+  - Team import and randomization functionality (merged from Host Console)
 - **Status**: Fully functional with WebSocket real-time updates
 
 ### ✅ UI Redesign - Audience View
@@ -53,19 +54,10 @@ A real-time NFL Calcutta auction web application built with Next.js 16, PostgreS
   - Player management (name + optional @handle)
   - RuleSet configuration (ante, min increment, timer, anti-snipe extension)
   - Default demo players if none provided
-  - Redirects to host console after creation
-
-### 🎮 Host Console (`/host/[eventId]`)
-- **Status**: ✅ Working
-- **Features**:
-  - Player list display
-  - Team import and randomization
-  - Host controls for lot management
-  - Links to Presenter and Audience views
-  - Real-time WebSocket updates
+  - Redirects to Presenter Dashboard after creation
 
 ### 📺 Presenter Dashboard (`/presenter/[eventId]`)
-- **Status**: ✅ Working (Recently Redesigned)
+- **Status**: ✅ Working (Unified Host/Admin View)
 - **Features**:
   - Dark command center interface
   - Current team display with seed/region info
@@ -74,6 +66,9 @@ A real-time NFL Calcutta auction web application built with Next.js 16, PostgreS
   - Host controls (Open, Pause/Resume, Accept & Advance, Undo)
   - Real-time activity feed (last 50 bids)
   - Next team preview
+  - Team import and randomization (when no teams exist)
+  - Player list display
+  - Full auction management capabilities
 
 ### 👥 Audience View (`/audience/[eventId]`)
 - **Status**: ✅ Working (Recently Redesigned)
@@ -116,7 +111,7 @@ A real-time NFL Calcutta auction web application built with Next.js 16, PostgreS
 2. **Team Import**: Host imports NFL teams (supports seed, region, bracket)
 3. **Randomization**: Teams randomized into auction lots using deterministic RNG
 4. **Lot Opening**: Host opens lot, timer starts
-5. **Bidding**: Players submit bids via Audience view or Host console
+5. **Bidding**: Players submit bids via Audience view or Presenter Dashboard
 6. **Anti-Snipe**: Timer extends when bid placed near end (configurable)
 7. **Sale Finalization**: Host accepts bid and advances to next team
 8. **Undo**: Host can undo last sale if needed

@@ -1,7 +1,7 @@
 # NFL Calcutta Auction - Operating Instructions
 
 ## Overview
-This guide explains how to run an NFL Calcutta auction using the web application. The app provides three views: **Host Console** (management), **Presenter Dashboard** (control center), and **Audience View** (public bidding).
+This guide explains how to run an NFL Calcutta auction using the web application. The app provides two views: **Presenter Dashboard** (host/admin control center) and **Audience View** (public bidding).
 
 ---
 
@@ -22,14 +22,15 @@ This guide explains how to run an NFL Calcutta auction using the web application
    - Optional: Add @handle (e.g., "John @johnny")
    - If left blank, defaults to 4 demo players
 4. **Click "Create Event"**
-   - You'll be redirected to the Host Console
+   - You'll be redirected to the Presenter Dashboard
    - Ante is automatically charged to all players
 
 ### 2. Import NFL Teams
 
-**Location**: Host Console (`/host/[eventId]`)
+**Location**: Presenter Dashboard (`/presenter/[eventId]`)
 
-1. **Scroll to "Import NFL Teams" section**
+1. **If no teams exist, you'll see the "Import Teams" section automatically**
+   - Otherwise, scroll to find the import section
 2. **Enter team names** (one per line):
    ```
    Kansas City Chiefs
@@ -48,9 +49,9 @@ This guide explains how to run an NFL Calcutta auction using the web application
 
 ## Running the Auction
 
-### 3. Open Presenter Dashboard
+### 3. Use Presenter Dashboard
 
-**Location**: Click "Presenter View" link from Host Console, or navigate to `/presenter/[eventId]`
+**Location**: `/presenter/[eventId]` (you're already here after creating the event)
 
 The Presenter Dashboard provides:
 - **Left Panel**: Current team, bid amount, timer, and host controls
@@ -64,9 +65,6 @@ The Presenter Dashboard provides:
    - Current team is displayed prominently
    - All connected clients see the team is open for bidding
 
-**Alternative (Host Console)**:
-- Use "Open Lot" button in Host Controls section
-
 ### 5. Accept Bids
 
 **Players can bid via two methods**:
@@ -78,8 +76,8 @@ The Presenter Dashboard provides:
 - Click "Bid" button
 - All views update in real-time
 
-#### Method B: Host Console
-- Host can place bids on behalf of players
+#### Method B: Presenter Dashboard
+- Host can place bids on behalf of players from the Presenter Dashboard
 - Select player from dropdown
 - Enter bid amount (in cents) or use +$1, +$5, +$10 buttons
 - Click "Bid" button
@@ -102,13 +100,10 @@ The Presenter Dashboard provides:
    - Next team automatically becomes available
    - All views update to show team is sold
 
-**Alternative (Host Console)**:
-- Click "Sold" button
-
 ### 7. Repeat Process
 
 **For each remaining team**:
-1. Click "Open Lot" (or "Next Team" if using Host Console)
+1. Click "Open Lot" on Presenter Dashboard
 2. Allow bidding (timer runs automatically)
 3. Accept winning bid when timer expires or bidding stops
 4. Repeat until all teams are sold
@@ -150,9 +145,9 @@ The app uses **additive payout percentages** based on playoff round wins:
 
 ### 8. Export Recap Data
 
-**Location**: Host Console or API endpoint
+**Location**: Presenter Dashboard or API endpoint
 
-**Method**: Navigate to `/api/events/[eventId]/recap` or use Host Console export feature
+**Method**: Navigate to `/api/events/[eventId]/recap` or use Presenter Dashboard export feature
 
 **CSV Export Contains**:
 - Player name and handle
@@ -190,24 +185,18 @@ Net Payout = (Winnings from teams) - (Total Spent) - (Ante)
 
 ## View Descriptions
 
-### Host Console (`/host/[eventId]`)
-- **Purpose**: Event management and team import
-- **Features**:
-  - View all players
-  - Import and randomize teams
-  - Basic lot controls
-  - Links to other views
-- **Use**: Initial setup and team import
-
 ### Presenter Dashboard (`/presenter/[eventId]`)
-- **Purpose**: Control center for running the auction
+- **Purpose**: Unified host/admin control center for running the auction
 - **Features**:
   - Dark, low-glare interface
   - Large display of current team and bid
   - Countdown timer with visual warnings
   - Host-only controls (Open, Pause/Resume, Accept & Advance, Undo)
   - Real-time activity feed
-- **Use**: Primary interface for auctioneer/host during live auction
+  - Team import and randomization (when no teams exist)
+  - Player list display
+  - Full auction management capabilities
+- **Use**: Primary interface for auctioneer/host - handles setup, team import, and live auction control
 
 ### Audience View (`/audience/[eventId]`)
 - **Purpose**: Public-facing interface for players to bid
@@ -225,14 +214,14 @@ Net Payout = (Winnings from teams) - (Total Spent) - (Ante)
 ## Tips & Best Practices
 
 1. **Before Starting**:
-   - Test all three views to ensure WebSocket connection works
+   - Test both views to ensure WebSocket connection works
    - Verify all players are listed correctly
    - Confirm ante amount is appropriate
+   - Import teams using the Presenter Dashboard
 
 2. **During Auction**:
    - Keep Presenter Dashboard on main screen/projector
    - Share Audience View URL with all participants
-   - Use Host Console for team import only (use Presenter for auction)
    - Monitor activity feed for bid disputes
 
 3. **Timer Management**:
@@ -277,12 +266,12 @@ Net Payout = (Winnings from teams) - (Total Spent) - (Ante)
 | Action | Location | Button/Control |
 |--------|----------|---------------|
 | Create Event | Home (`/`) | "Create Event" |
-| Import Teams | Host Console | "Import NFL Teams" |
+| Import Teams | Presenter Dashboard | "Import NFL Teams" |
 | Open Lot | Presenter Dashboard | "Open Lot" |
 | Place Bid | Audience View | "Bid" button |
 | Accept Sale | Presenter Dashboard | "Accept Bid & Advance" |
 | Undo Sale | Presenter Dashboard | "Undo Last Sale" |
-| Export Recap | API/Console | `/api/events/[eventId]/recap` |
+| Export Recap | API/Dashboard | `/api/events/[eventId]/recap` |
 
 ---
 

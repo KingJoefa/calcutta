@@ -1,56 +1,23 @@
-# Three-View Architecture Explanation
+# Two-View Architecture Explanation
 
 ## Overview
 
-The NFL Calcutta auction application uses a **three-view architecture** that separates concerns based on user roles and use cases. Each view serves a distinct purpose and has different levels of access and functionality.
+The NFL Calcutta auction application uses a **two-view architecture** that separates concerns based on user roles and use cases. Each view serves a distinct purpose and has different levels of access and functionality.
 
 ---
 
-## The Three Views
+## The Two Views
 
-### 1. 🎮 Host Console (`/host/[eventId]`)
+### 1. 📺 Presenter Dashboard (`/presenter/[eventId]`)
 
-**Purpose**: Administrative setup and event management
+**Purpose**: Unified host/admin control center for auction management
 
-**Who Uses It**: Event organizer/host (typically one person)
-
-**When It's Used**: 
-- Before the auction starts (setup phase)
-- For administrative tasks during/after auction
-
-**Key Features**:
-- ✅ **Player Management**: View all registered players
-- ✅ **Team Import**: Import NFL teams and trigger randomization
-- ✅ **Basic Controls**: Simple lot opening/closing and bid placement (for testing)
-- ✅ **Navigation Hub**: Links to Presenter and Audience views
-- ✅ **Full Data Access**: Can see all event data (players, teams, lots, etc.)
-
-**UI Design**:
-- Simple, functional interface
-- Light background, standard layout
-- Focused on setup tasks
-
-**Technical Details**:
-- Server-side rendered (Next.js server component)
-- Fetches full event data from database
-- Can perform administrative actions
-- WebSocket connected for real-time updates
-
-**Limitations**:
-- Not optimized for live auction control
-- Basic controls (better controls available in Presenter view)
-
----
-
-### 2. 📺 Presenter Dashboard (`/presenter/[eventId]`)
-
-**Purpose**: Live auction control center
-
-**Who Uses It**: Auctioneer/host running the live auction (typically one person)
+**Who Uses It**: Event organizer/host/auctioneer (typically one person)
 
 **When It's Used**: 
-- During the live auction
-- Primary interface for auction management
+- Before the auction starts (setup phase - team import)
+- During the live auction (primary control interface)
+- After the auction (export recap, review results)
 
 **Key Features**:
 - ✅ **Command Center Layout**: Dark theme, low-glare, optimized for screen sharing
@@ -64,6 +31,8 @@ The NFL Calcutta auction application uses a **three-view architecture** that sep
   - Undo Last Sale
 - ✅ **Activity Feed**: Right panel showing last 50 bids in real-time
 - ✅ **Next Team Preview**: Shows upcoming team
+- ✅ **Team Import**: Import NFL teams and trigger randomization (when no teams exist)
+- ✅ **Player Management**: View all registered players
 - ✅ **Full Lot Management**: Can see all lots and their status
 
 **UI Design**:
@@ -76,19 +45,19 @@ The NFL Calcutta auction application uses a **three-view architecture** that sep
 **Technical Details**:
 - Client-side component with WebSocket real-time updates
 - Fetches initial state from `/api/events/[eventId]/state`
-- Subscribes to WebSocket events: `bid_placed`, `lot_opened`, `lot_sold`
+- Subscribes to WebSocket events: `bid_placed`, `lot_opened`, `lot_sold`, `undo_last`
 - Updates timer every 100ms for accuracy
-- Can perform all host actions (open, sell, undo)
+- Can perform all host actions (import teams, open, sell, undo, place bids)
 
-**Why Separate from Host Console?**:
-- Different use case (live auction vs. setup)
-- Optimized UI for live auction control
-- Better UX for auctioneer during fast-paced bidding
-- Activity feed provides audit trail
+**Why Unified View?**:
+- Simplifies workflow - one interface for all host/admin tasks
+- Better UX - no need to switch between views
+- Team import appears automatically when needed
+- All controls in one optimized interface
 
 ---
 
-### 3. 👥 Audience View (`/audience/[eventId]`)
+### 2. 👥 Audience View (`/audience/[eventId]`)
 
 **Purpose**: Public-facing interface for participants to view and bid
 
@@ -139,7 +108,7 @@ The NFL Calcutta auction application uses a **three-view architecture** that sep
 
 ### Real-Time Synchronization
 
-All three views connect to the same **WebSocket server** and receive real-time updates:
+Both views connect to the same **WebSocket server** and receive real-time updates:
 
 ```
 ┌─────────────────┐
@@ -148,7 +117,6 @@ All three views connect to the same **WebSocket server** and receive real-time u
 │  (Port 4000)    │
 └─────────────────┘
          │
-         ├───► Host Console (receives updates)
          ├───► Presenter Dashboard (receives updates)
          └───► Audience View (receives updates)
 ```
@@ -162,39 +130,39 @@ All three views connect to the same **WebSocket server** and receive real-time u
 ### Data Flow
 
 ```
-1. Host Console: Import teams → Database updated → WebSocket broadcast
+1. Presenter Dashboard: Import teams → Database updated → WebSocket broadcast
 2. Presenter Dashboard: Open lot → Database updated → WebSocket broadcast
 3. Audience View: Place bid → Database updated → WebSocket broadcast
 4. Presenter Dashboard: Accept sale → Database updated → WebSocket broadcast
-5. All views update in real-time via WebSocket
+5. Both views update in real-time via WebSocket
 ```
 
 ### Access Control
 
-| Action | Host Console | Presenter Dashboard | Audience View |
-|--------|-------------|---------------------|---------------|
-| View players | ✅ | ✅ | ❌ |
-| Import teams | ✅ | ❌ | ❌ |
-| Open lot | ✅ | ✅ | ❌ |
-| Place bid | ✅ | ✅ | ✅ |
-| Accept sale | ✅ | ✅ | ❌ |
-| Undo sale | ✅ | ✅ | ❌ |
-| Pause timer | ❌ | ✅ | ❌ |
-| View activity feed | ❌ | ✅ | ❌ |
+| Action | Presenter Dashboard | Audience View |
+|--------|---------------------|---------------|
+| View players | ✅ | ❌ |
+| Import teams | ✅ | ❌ |
+| Open lot | ✅ | ❌ |
+| Place bid | ✅ | ✅ |
+| Accept sale | ✅ | ❌ |
+| Undo sale | ✅ | ❌ |
+| Pause timer | ✅ | ❌ |
+| View activity feed | ✅ | ❌ |
 
 ---
 
 ## Design Rationale
 
-### Why Three Separate Views?
+### Why Two Separate Views?
 
 1. **Separation of Concerns**
-   - Setup (Host) vs. Live Control (Presenter) vs. Participation (Audience)
+   - Control (Presenter) vs. Participation (Audience)
    - Each view optimized for its specific use case
 
 2. **Security**
    - Audience can't accidentally break the auction
-   - Host controls only available to authorized views
+   - Host controls only available to authorized view
 
 3. **User Experience**
    - Different users need different information
@@ -204,12 +172,17 @@ All three views connect to the same **WebSocket server** and receive real-time u
 4. **Performance**
    - Audience view loads minimal data (faster)
    - Presenter view loads full state (needs everything)
-   - Host console loads full event data (administrative)
 
 5. **Scalability**
    - Many Audience views can connect simultaneously
    - Only one Presenter needed
-   - Host Console used sparingly
+
+### Why Unified Presenter Dashboard?
+
+- **Simplified workflow**: One interface for setup and control
+- **Better UX**: No need to switch between Host Console and Presenter
+- **Context-aware**: Team import appears when needed
+- **Reduced complexity**: Fewer views to maintain
 
 ### Why Not Just One View?
 
@@ -223,8 +196,8 @@ All three views connect to the same **WebSocket server** and receive real-time u
 ## Typical Workflow
 
 ### Before Auction
-1. **Host Console**: Create event, add players, import teams
-2. **Host Console**: Verify setup, check player list
+1. **Presenter Dashboard**: Create event, add players, import teams
+2. **Presenter Dashboard**: Verify setup, check player list
 
 ### During Auction
 1. **Presenter Dashboard**: Open on main screen/projector
@@ -235,23 +208,22 @@ All three views connect to the same **WebSocket server** and receive real-time u
 6. **Repeat** for each team
 
 ### After Auction
-1. **Host Console**: Export recap CSV
-2. **Host Console**: Review final results
+1. **Presenter Dashboard**: Export recap CSV
+2. **Presenter Dashboard**: Review final results
 
 ---
 
 ## Technical Implementation
 
 ### Shared Components
-- `wsClient.ts` - WebSocket connection logic (used by all views)
+- `wsClient.ts` - WebSocket connection logic (used by both views)
 - `prisma.ts` - Database client (used by server components)
 - API routes - Shared backend logic
 
 ### View-Specific Components
-- `HostControls.tsx` - Host Console controls
-- `PresenterDashboard.tsx` - Presenter view component
+- `PresenterDashboard.tsx` - Presenter view component (includes team import)
 - `AudienceView.tsx` - Audience view component
-- `ImportAndRandomize.tsx` - Team import (Host only)
+- `AuctionTimeline.tsx` - Timeline component (used in Presenter)
 
 ### State Management
 - **Server State**: Fetched on page load (initial state)
@@ -262,15 +234,15 @@ All three views connect to the same **WebSocket server** and receive real-time u
 
 ## Summary
 
-The three-view architecture provides:
+The two-view architecture provides:
 
-✅ **Clear separation** of setup, control, and participation  
+✅ **Clear separation** of control and participation  
 ✅ **Security** through access control  
 ✅ **Optimized UX** for each user type  
 ✅ **Real-time synchronization** via WebSocket  
 ✅ **Scalability** for many simultaneous participants  
 ✅ **Mobile support** for audience members  
+✅ **Simplified workflow** with unified host interface
 
 Each view serves a specific purpose and together they create a complete auction management system.
-
 
