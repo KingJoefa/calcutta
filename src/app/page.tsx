@@ -2,6 +2,7 @@
 "use client";
 
 import { useState } from "react";
+import { AuctionTimeline } from "../components/AuctionTimeline";
 import styles from "./page.module.css";
 
 export default function Home() {
@@ -9,11 +10,12 @@ export default function Home() {
 	const [error, setError] = useState<string | null>(null);
 
 	return (
-		<div className={styles.container}>
-			<div className={styles.card}>
+		<div>
+			<AuctionTimeline currentStep="home" />
+			<div className={styles.container}>
+				<div className={styles.card}>
 				<div className={styles.header}>
-					<h1 className={styles.title}>NFL Calcutta Auction</h1>
-					<p className={styles.subtitle}>Create a new auction event</p>
+					<h1 className={styles.title}>Create New Auction Event</h1>
 				</div>
 
 				<form
@@ -30,6 +32,7 @@ export default function Home() {
 							const data = new FormData(form);
 						const eventName = (data.get("name") as string) || "NFL Calcutta Demo Event";
 						const playersText = (data.get("players") as string) || "";
+						const teamsText = (data.get("teams") as string) || "";
 						
 						// Parse players from textarea (one per line, optional @handle)
 						const players = playersText
@@ -57,6 +60,24 @@ export default function Home() {
 								{ name: "Dave", handle: "@dave" },
 							];
 
+						// Parse teams from textarea (one per line, optional seed/region info)
+						const teams = teamsText
+							.split("\n")
+							.map((line) => line.trim())
+							.filter(Boolean)
+							.map((line) => {
+								// Try to parse seed/region info: "Team Name (AFC #1)" or "Team Name (NFC #2)"
+								const seedMatch = line.match(/^(.+?)\s*\(([A-Z]+)\s*#(\d+)\)$/);
+								if (seedMatch) {
+									return {
+										name: seedMatch[1].trim(),
+										region: seedMatch[2],
+										seed: parseInt(seedMatch[3], 10),
+									};
+								}
+								return { name: line };
+							});
+
 						// Convert dollars to cents for API
 						const anteDollars = Number(data.get("anteDollars") || 10);
 						const minIncrementDollars = Number(data.get("minIncrementDollars") || 1);
@@ -81,6 +102,7 @@ export default function Home() {
 								includeAnteInPot: true,
 							},
 							players: finalPlayers,
+							teams: teams.length > 0 ? teams : undefined, // Only include if teams provided
 						};
 							const response = await fetch("/api/events", {
 								method: "POST",
@@ -209,6 +231,41 @@ export default function Home() {
 						</div>
 					</div>
 
+					<div className={styles.section}>
+						<h2 className={styles.sectionTitle}>NFL Teams</h2>
+						<div className={styles.field}>
+							<label htmlFor="teams" className={styles.label}>
+								Team List
+							</label>
+							<span className={styles.helperText}>
+								One team per line (typically 14 teams for NFL playoffs). 
+								Optional: include seed/region info (e.g., "Kansas City Chiefs (AFC #1)").
+								Leave blank to import teams later.
+							</span>
+							<textarea
+								id="teams"
+								name="teams"
+								className={styles.textarea}
+								rows={8}
+								placeholder="Kansas City Chiefs (AFC #1)&#10;Buffalo Bills (AFC #2)&#10;Baltimore Ravens (AFC #3)&#10;..."
+								defaultValue={`Kansas City Chiefs (AFC #1)
+Buffalo Bills (AFC #2)
+Baltimore Ravens (AFC #3)
+Houston Texans (AFC #4)
+Los Angeles Chargers (AFC #5)
+Pittsburgh Steelers (AFC #6)
+Denver Broncos (AFC #7)
+Detroit Lions (NFC #1)
+Philadelphia Eagles (NFC #2)
+Tampa Bay Buccaneers (NFC #3)
+Los Angeles Rams (NFC #4)
+Minnesota Vikings (NFC #5)
+Washington Commanders (NFC #6)
+Green Bay Packers (NFC #7)`}
+							/>
+						</div>
+					</div>
+
 					{error && (
 						<div style={{ 
 							padding: "12px", 
@@ -231,6 +288,7 @@ export default function Home() {
 						</button>
 					</div>
 				</form>
+				</div>
 			</div>
 		</div>
 	);

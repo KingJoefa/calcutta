@@ -31,6 +31,27 @@ async function getAuctionState(eventId: string) {
 		lots.find((l) => l.status === "open") ??
 		lots.find((l) => l.status === "pending");
 
+	// Get sold lots with their owners
+	const soldLots = lots.filter((l) => l.status === "sold" && l.acceptedBidderId);
+	const soldLotIds = soldLots.map((l) => l.id);
+	
+	// Get sales for sold lots to get the exact winning bid
+	const sales = soldLotIds.length > 0 ? await prisma.sale.findMany({
+		where: {
+			lotId: { in: soldLotIds },
+		},
+		include: {
+			player: true,
+			lot: { include: { team: true } },
+		},
+		orderBy: { finalizedAt: "desc" },
+	}) : [];
+
+	// Filter bids: only show bids for current lot (if open), or empty if no current lot
+	const filteredBids = currentLot && currentLot.status === "open"
+		? bids.filter((b) => b.lotId === currentLot.id)
+		: [];
+
 	return {
 		event: {
 			id: event.id,
@@ -49,6 +70,7 @@ async function getAuctionState(eventId: string) {
 			status: l.status,
 			currentBidCents: l.currentBidCents,
 			highBidderId: l.highBidderId,
+			acceptedBidderId: l.acceptedBidderId,
 			openedAt: l.openedAt?.toISOString(),
 			closesAt: l.closesAt?.toISOString(),
 			team: {
@@ -66,6 +88,7 @@ async function getAuctionState(eventId: string) {
 					status: currentLot.status,
 					currentBidCents: currentLot.currentBidCents,
 					highBidderId: currentLot.highBidderId,
+					acceptedBidderId: currentLot.acceptedBidderId,
 					openedAt: currentLot.openedAt?.toISOString(),
 					closesAt: currentLot.closesAt?.toISOString(),
 					team: {
@@ -77,7 +100,7 @@ async function getAuctionState(eventId: string) {
 					},
 				}
 			: null,
-		recentBids: bids.map((b) => ({
+		recentBids: filteredBids.map((b) => ({
 			id: b.id,
 			lotId: b.lotId,
 			playerId: b.playerId,
@@ -85,6 +108,14 @@ async function getAuctionState(eventId: string) {
 			amountCents: b.amountCents,
 			createdAt: b.createdAt.toISOString(),
 			teamName: b.lot.team.name,
+		})),
+		soldLots: sales.map((s) => ({
+			lotId: s.lotId,
+			teamName: s.lot.team.name,
+			playerId: s.playerId,
+			playerName: s.player.name,
+			amountCents: s.amountCents,
+			soldAt: s.finalizedAt.toISOString(),
 		})),
 	};
 }

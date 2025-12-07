@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { connectWs, type Message } from "../client/wsClient";
+import { AuctionTimeline } from "./AuctionTimeline";
 
 type Team = { id: string; name: string; seed?: number | null; region?: string | null; bracket?: string | null };
 type Lot = {
@@ -25,16 +26,64 @@ type AuctionState = {
 export function AudienceView({ eventId, initialState }: { eventId: string; initialState: AuctionState }) {
 	const [state, setState] = useState<AuctionState>(initialState);
 	const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+	const [refreshCountdown, setRefreshCountdown] = useState<number | null>(null);
 	const [selectedPlayerId, setSelectedPlayerId] = useState<string>("");
 	const [bidAmount, setBidAmount] = useState<string>("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [bidAnimation, setBidAnimation] = useState<{ playerName: string; amountCents: number } | null>(null);
+	const [previousBidAmount, setPreviousBidAmount] = useState<number>(initialState.currentLot?.currentBidCents ?? 0);
 	const wsRef = useRef<WebSocket | null>(null);
 	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+	const refreshCountdownRef = useRef<NodeJS.Timeout | null>(null);
+
+	// Function to refetch state from API
+	const refetchState = async () => {
+		try {
+			const res = await fetch(`/api/events/${eventId}/state`);
+			if (res.ok) {
+				const newState = await res.json();
+				setState({
+					event: newState.event,
+					ruleSet: newState.ruleSet,
+					currentLot: newState.currentLot,
+					players: newState.players,
+				});
+				// Clear refresh countdown when state is refreshed
+				setRefreshCountdown(null);
+				if (refreshCountdownRef.current) {
+					clearInterval(refreshCountdownRef.current);
+					refreshCountdownRef.current = null;
+				}
+			}
+		} catch (err) {
+			console.error("Failed to refetch state:", err);
+		}
+	};
 
 	const currentLot = state.currentLot;
 	const minBid = currentLot
 		? (currentLot.currentBidCents + (state.ruleSet?.minIncrementCents ?? 100)) / 100
 		: 0;
+	const button = {
+		base: {
+			borderRadius: 10,
+			border: "2px solid transparent",
+			fontWeight: 700,
+			cursor: "pointer",
+			transition: "transform 120ms ease, box-shadow 120ms ease, background 120ms ease",
+		} as const,
+		primary: {
+			backgroundColor: "#2563eb",
+			color: "#fff",
+			boxShadow: "0 10px 24px rgba(37,99,235,0.25)",
+		},
+		disabled: {
+			backgroundColor: "#9ca3af",
+			color: "#f8fafc",
+			cursor: "not-allowed",
+			boxShadow: "none",
+		},
+	};
 
 	// Timer calculation
 	useEffect(() => {
@@ -70,6 +119,15 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 						if (!prev.currentLot || prev.currentLot.id !== payload.lotId) {
 							return prev;
 						}
+						
+						// Trigger animation for new bid
+						const playerName = prev.players.find((p) => p.id === payload.playerId)?.name ?? "Unknown";
+						setBidAnimation({ playerName, amountCents: payload.amountCents });
+						setPreviousBidAmount(prev.currentLot.currentBidCents);
+						
+						// Clear animation after 2 seconds
+						setTimeout(() => setBidAnimation(null), 2000);
+						
 						return {
 							...prev,
 							currentLot: {
@@ -82,6 +140,7 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 					});
 				}
 				if (msg.type === "lot_sold") {
+					const payload = msg.payload as any;
 					setState((prev) => {
 						if (!prev.currentLot) {
 							return prev;
@@ -91,29 +150,54 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 							currentLot: { ...prev.currentLot, status: "sold" },
 						};
 					});
+					// Clear bid input when team is sold
+					setBidAmount("");
+					setSelectedPlayerId("");
+					
+					// Clear any existing countdown
+					if (refreshCountdownRef.current) {
+						clearInterval(refreshCountdownRef.current);
+					}
+					
+					// Start 30-second countdown before auto-refreshing
+					setRefreshCountdown(30);
+					refreshCountdownRef.current = setInterval(() => {
+						setRefreshCountdown((prev) => {
+							if (prev === null || prev <= 1) {
+								if (refreshCountdownRef.current) {
+									clearInterval(refreshCountdownRef.current);
+									refreshCountdownRef.current = null;
+								}
+								// Refetch after countdown completes
+								setTimeout(() => {
+									refetchState();
+								}, 500);
+								return null;
+							}
+							return prev - 1;
+						});
+					}, 1000);
 				}
 				if (msg.type === "lot_opened") {
 					const payload = msg.payload as any;
-					setState((prev) => {
-						if (!prev.currentLot || prev.currentLot.id !== payload.lotId) {
-							return prev;
-						}
-						return {
-							...prev,
-							currentLot: {
-								...prev.currentLot,
-								status: "open",
-								closesAt: payload.closesAt ?? prev.currentLot.closesAt,
-								openedAt: new Date().toISOString(),
-							},
-						};
-					});
+					// Clear countdown if host manually opens next team
+					if (refreshCountdownRef.current) {
+						clearInterval(refreshCountdownRef.current);
+						refreshCountdownRef.current = null;
+					}
+					setRefreshCountdown(null);
+					// Always refetch state when a lot opens to ensure we have the latest data
+					// This handles both the current lot opening and the next team being opened
+					refetchState();
 				}
 			});
 		});
 
 		return () => {
 			wsRef.current?.close();
+			if (refreshCountdownRef.current) {
+				clearInterval(refreshCountdownRef.current);
+			}
 		};
 	}, [eventId]);
 
@@ -172,9 +256,88 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 				backgroundColor: "#ffffff",
 				color: "#1a1a1a",
 				fontFamily: "system-ui, -apple-system, sans-serif",
-				padding: "24px",
+				position: "relative",
 			}}
 		>
+			<style dangerouslySetInnerHTML={{
+				__html: `
+					@keyframes bidPopup {
+						0% {
+							opacity: 0;
+							transform: translate(-50%, -50%) scale(0.8);
+						}
+						15% {
+							opacity: 1;
+							transform: translate(-50%, -50%) scale(1.1);
+						}
+						30% {
+							transform: translate(-50%, -50%) scale(1);
+						}
+						85% {
+							opacity: 1;
+							transform: translate(-50%, -50%) scale(1);
+						}
+						100% {
+							opacity: 0;
+							transform: translate(-50%, -50%) scale(0.9);
+						}
+					}
+					@keyframes bidIncrease {
+						from {
+							transform: scale(1);
+							color: #059669;
+						}
+						50% {
+							transform: scale(1.2);
+							color: #10b981;
+						}
+						to {
+							transform: scale(1);
+							color: #059669;
+						}
+					}
+					.bid-popup-animation {
+						animation: bidPopup 2s ease-out forwards;
+					}
+					.bid-increase-animation {
+						animation: bidIncrease 0.6s ease-out;
+					}
+				`
+			}} />
+			{/* Bid Animation Overlay */}
+				{bidAnimation && (
+					<div
+						className="bid-popup-animation"
+						style={{
+							position: "fixed",
+							top: "50%",
+							left: "50%",
+							transform: "translate(-50%, -50%)",
+							zIndex: 1000,
+							pointerEvents: "none",
+						}}
+					>
+						<div
+							style={{
+								backgroundColor: "#059669",
+								color: "#fff",
+								padding: "24px 48px",
+								borderRadius: "16px",
+								boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+								textAlign: "center",
+							}}
+						>
+							<div style={{ fontSize: "32px", fontWeight: 700, marginBottom: "8px" }}>
+								{bidAnimation.playerName}
+							</div>
+							<div style={{ fontSize: "24px", opacity: 0.9 }}>
+								${(bidAnimation.amountCents / 100).toFixed(2)}
+							</div>
+						</div>
+					</div>
+				)}
+				<AuctionTimeline currentStep="auction" eventId={eventId} />
+				<div style={{ padding: "24px" }}>
 			<div style={{ maxWidth: "800px", margin: "0 auto" }}>
 				{/* Header */}
 				<div style={{ marginBottom: "32px", textAlign: "center" }}>
@@ -246,6 +409,8 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 							Current High Bid
 						</div>
 						<div
+							key={currentLot?.currentBidCents}
+							className={bidAnimation ? "bid-increase-animation" : ""}
 							style={{
 								fontSize: "clamp(40px, 10vw, 72px)",
 								fontWeight: 700,
@@ -309,6 +474,7 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 							<select
 								value={selectedPlayerId}
 								onChange={(e) => setSelectedPlayerId(e.target.value)}
+								aria-label="Select your name"
 								style={{
 									padding: "16px",
 									fontSize: "clamp(16px, 4vw, 20px)",
@@ -333,6 +499,8 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 									placeholder={`Min: $${minBid.toFixed(2)}`}
 									min={minBid}
 									step="0.01"
+									aria-label="Bid amount in dollars"
+									aria-describedby="min-bid-hint"
 									style={{
 										flex: 1,
 										padding: "16px",
@@ -348,13 +516,7 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 									style={{
 										padding: "16px 32px",
 										fontSize: "clamp(16px, 4vw, 20px)",
-										fontWeight: 600,
-										backgroundColor: selectedPlayerId && bidAmount ? "#2563eb" : "#9ca3af",
-										color: "#fff",
-										border: "none",
-										borderRadius: "8px",
-										cursor: selectedPlayerId && bidAmount ? "pointer" : "not-allowed",
-										transition: "background-color 0.2s",
+										...(selectedPlayerId && bidAmount ? { ...button.base, ...button.primary } : { ...button.base, ...button.disabled }),
 									}}
 									onMouseOver={(e) => {
 										if (selectedPlayerId && bidAmount) {
@@ -366,6 +528,7 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 											e.currentTarget.style.backgroundColor = "#2563eb";
 										}
 									}}
+									aria-label="Place bid"
 								>
 									{isSubmitting ? "Submitting..." : "Bid"}
 								</button>
@@ -376,6 +539,8 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 									color: "#6b7280",
 									textAlign: "center",
 								}}
+								id="min-bid-hint"
+								aria-live="polite"
 							>
 								Minimum bid: <strong>${minBid.toFixed(2)}</strong>
 							</div>
@@ -399,13 +564,30 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 						<div
 							style={{
 								textAlign: "center",
-								fontSize: "clamp(18px, 4vw, 24px)",
-								color: "#059669",
 								padding: "24px",
-								fontWeight: 600,
 							}}
 						>
-							Sold to {highBidder} for ${((currentLot?.currentBidCents ?? 0) / 100).toFixed(2)}
+							<div
+								style={{
+									fontSize: "clamp(18px, 4vw, 24px)",
+									color: "#059669",
+									fontWeight: 600,
+									marginBottom: refreshCountdown !== null ? "16px" : "0",
+								}}
+							>
+								Sold to {highBidder} for ${((currentLot?.currentBidCents ?? 0) / 100).toFixed(2)}
+							</div>
+							{refreshCountdown !== null && (
+								<div
+									style={{
+										fontSize: "clamp(14px, 3vw, 18px)",
+										color: "#6b7280",
+										fontWeight: 500,
+									}}
+								>
+									Next team in {refreshCountdown} seconds...
+								</div>
+							)}
 						</div>
 					)}
 				</div>
@@ -460,7 +642,7 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 					)}
 				</div>
 			</div>
+			</div>
 		</div>
 	);
 }
-

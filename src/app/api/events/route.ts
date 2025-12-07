@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getWsServer } from "@/server/wsServer";
+import { shuffleDeterministic } from "@/lib/rng";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export async function POST(req: NextRequest) {
 			rngSeed,
 			ruleSet,
 			players,
+			teams,
 		}: {
 			name: string;
 			rngSeed?: string;
@@ -26,6 +28,7 @@ export async function POST(req: NextRequest) {
 				includeAnteInPot?: boolean;
 			};
 			players: Array<{ name: string; handle?: string }>;
+			teams?: Array<{ name: string; seed?: number; region?: string; bracket?: string }>;
 		} = body;
 
 		if (!name || !ruleSet || !players?.length) {
@@ -55,8 +58,18 @@ export async function POST(req: NextRequest) {
 				players: {
 					create: players.map((e) => ({ name: e.name, handle: e.handle })),
 				},
+				...(teams && teams.length > 0 ? {
+					teams: {
+						create: teams.map((t) => ({
+							name: t.name,
+							seed: t.seed ?? null,
+							region: t.region ?? null,
+							bracket: t.bracket ?? null,
+						})),
+					},
+				} : {}),
 			},
-			include: { players: true, ruleSet: true },
+			include: { players: true, ruleSet: true, teams: true },
 		});
 
 		// Ledger: charge ante per player
@@ -68,6 +81,19 @@ export async function POST(req: NextRequest) {
 					type: "ante",
 					amountCents: event.ruleSet!.anteCents,
 					note: "Ante",
+				})),
+			});
+		}
+
+		// If teams were provided, randomize them into lots
+		if (teams && teams.length > 0 && event.teams.length > 0) {
+			const shuffledTeams = shuffleDeterministic(event.teams, seed);
+			await prisma.lot.createMany({
+				data: shuffledTeams.map((team, idx) => ({
+					eventId: event.id,
+					teamId: team.id,
+					orderIndex: idx,
+					status: "pending",
 				})),
 			});
 		}

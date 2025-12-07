@@ -28,7 +28,7 @@ export async function POST(
 		const nextMin = Math.max(0, lot.currentBidCents) + minIncrement;
 		if (amountCents < nextMin) {
 			return NextResponse.json(
-				{ error: `Bid must be >= ${nextMin}` },
+				{ error: `Bid must be at least $${(nextMin / 100).toFixed(2)} (current bid: $${(lot.currentBidCents / 100).toFixed(2)}, minimum increment: $${(minIncrement / 100).toFixed(2)})` },
 				{ status: 400 },
 			);
 		}

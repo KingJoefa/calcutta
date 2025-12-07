@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import { connectWs, type Message } from "../client/wsClient";
+import { AuctionTimeline } from "./AuctionTimeline";
 
 type Player = { id: string; name: string; handle?: string | null };
 type Team = { id: string; name: string; seed?: number | null; region?: string | null; bracket?: string | null };
@@ -11,6 +12,7 @@ type Lot = {
 	status: "pending" | "open" | "sold";
 	currentBidCents: number;
 	highBidderId: string | null;
+	acceptedBidderId: string | null;
 	openedAt: string | null;
 	closesAt: string | null;
 	team: Team;
@@ -25,27 +27,54 @@ type Bid = {
 	teamName: string;
 };
 
+type SoldLot = {
+	lotId: string;
+	teamName: string;
+	playerId: string;
+	playerName: string;
+	amountCents: number;
+	soldAt: string;
+};
+
 type AuctionState = {
 	event: { id: string; name: string; status: string };
-	ruleSet: { auctionTimerSeconds: number; antiSnipeExtensionSeconds: number } | null;
+	ruleSet: { auctionTimerSeconds: number; antiSnipeExtensionSeconds: number; minIncrementCents: number } | null;
 	players: Player[];
 	lots: Lot[];
 	currentLot: Lot | null;
 	recentBids: Bid[];
+	soldLots?: SoldLot[];
 };
 
 export function PresenterDashboard({ eventId, initialState }: { eventId: string; initialState: AuctionState }) {
 	const [state, setState] = useState<AuctionState>(initialState);
+	const [bidHistory, setBidHistory] = useState<Bid[]>(initialState.recentBids ?? []);
 	const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
 	const [isPaused, setIsPaused] = useState(false);
+	const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+	const [bidAmount, setBidAmount] = useState<number>(0);
+	const [bidInputValue, setBidInputValue] = useState<string>("");
+	const [showTeamImport, setShowTeamImport] = useState(initialState.lots.length === 0);
+	const [isSubmittingBid, setIsSubmittingBid] = useState(false);
+	const [sidebarWidth, setSidebarWidth] = useState<number>(600); // Default width in pixels
+	const [isResizing, setIsResizing] = useState(false);
 	const wsRef = useRef<WebSocket | null>(null);
 	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 	const pausedTimeRef = useRef<number | null>(null);
+	const resizeStartXRef = useRef<number>(0);
+	const resizeStartWidthRef = useRef<number>(0);
 
 	const currentLot = state.currentLot;
 	const highBidder = currentLot?.highBidderId
 		? state.players.find((p) => p.id === currentLot.highBidderId)?.name ?? "Unknown"
 		: null;
+
+	// Reset bid input when lot changes
+	useEffect(() => {
+		setBidAmount(0);
+		setBidInputValue("");
+		setSelectedPlayerId(null);
+	}, [currentLot?.id]);
 
 	// Timer calculation
 	useEffect(() => {
@@ -86,53 +115,101 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 			wsRef.current = connectWs(eventId, (msg: Message) => {
 				if (msg.type === "bid_placed") {
 					const payload = msg.payload as any;
-					setState((prev) => ({
-						...prev,
-						lots: prev.lots.map((l) =>
+					setState((prev) => {
+						// Only process if this is for the current open lot
+						if (!prev.currentLot || prev.currentLot.id !== payload.lotId || prev.currentLot.status !== "open") {
+							return prev;
+						}
+
+						const updatedLots = prev.lots.map((l) =>
 							l.id === payload.lotId
 								? {
 										...l,
 										currentBidCents: payload.amountCents,
 										highBidderId: payload.playerId,
+										// If there's an accepted bidder, update it to the new high bidder
+										acceptedBidderId: l.acceptedBidderId ? payload.playerId : l.acceptedBidderId,
 										closesAt: payload.closesAt ?? l.closesAt,
 									}
 								: l,
-						),
-						currentLot:
-							prev.currentLot?.id === payload.lotId
-								? {
-										...prev.currentLot,
-										currentBidCents: payload.amountCents,
-										highBidderId: payload.playerId,
-										closesAt: payload.closesAt ?? prev.currentLot.closesAt,
-									}
-								: prev.currentLot,
-						recentBids: [
-							{
-								id: `temp-${Date.now()}`,
-								lotId: payload.lotId,
-								playerId: payload.playerId,
-								playerName: prev.players.find((p) => p.id === payload.playerId)?.name ?? "Unknown",
-								amountCents: payload.amountCents,
-								createdAt: new Date().toISOString(),
-								teamName: prev.currentLot?.team.name ?? "",
-							},
-							...prev.recentBids.slice(0, 49),
-						],
-					}));
+						);
+						const updatedCurrentLot = {
+							...prev.currentLot,
+							currentBidCents: payload.amountCents,
+							highBidderId: payload.playerId,
+							// If there's an accepted bidder, update it to the new high bidder
+							acceptedBidderId: prev.currentLot.acceptedBidderId ? payload.playerId : prev.currentLot.acceptedBidderId,
+							closesAt: payload.closesAt ?? prev.currentLot.closesAt,
+						};
+						return {
+							...prev,
+							lots: updatedLots,
+							currentLot: updatedCurrentLot,
+							recentBids: [
+								{
+									id: `temp-${Date.now()}`,
+									lotId: payload.lotId,
+									playerId: payload.playerId,
+									playerName: prev.players.find((p) => p.id === payload.playerId)?.name ?? "Unknown",
+									amountCents: payload.amountCents,
+									createdAt: new Date().toISOString(),
+									teamName: prev.currentLot.team.name,
+								},
+								...prev.recentBids.slice(0, 49),
+							],
+						};
+					});
+
+					setBidHistory((prev) => [
+						{
+							id: `hist-${Date.now()}`,
+							lotId: payload.lotId,
+							playerId: payload.playerId,
+							playerName: state.players.find((p) => p.id === payload.playerId)?.name ?? "Unknown",
+							amountCents: payload.amountCents,
+							createdAt: new Date().toISOString(),
+							teamName: state.currentLot?.team.name ?? "",
+						},
+						...prev,
+					]);
 				}
 				if (msg.type === "lot_sold") {
 					const payload = msg.payload as any;
-					setState((prev) => ({
-						...prev,
-						lots: prev.lots.map((l) =>
-							l.id === payload.lotId ? { ...l, status: "sold" } : l,
-						),
-						currentLot:
-							prev.currentLot?.id === payload.lotId
-								? { ...prev.currentLot, status: "sold" }
-								: prev.currentLot,
-					}));
+					setState((prev) => {
+						const updatedLots = prev.lots.map((l) =>
+							l.id === payload.lotId ? { ...l, status: "sold" as const } : l,
+						);
+						
+						// Find next lot (use nextLotId from payload if available, otherwise find first pending)
+						const nextLot = payload.nextLotId 
+							? updatedLots.find((l) => l.id === payload.nextLotId) ?? null
+							: updatedLots.find((l) => l.status === "pending") ?? null;
+						
+						// Add sold lot to soldLots array
+						const soldLot: SoldLot = {
+							lotId: payload.lotId,
+							teamName: payload.teamName ?? prev.currentLot?.team.name ?? "Unknown",
+							playerId: payload.playerId,
+							playerName: payload.playerName ?? prev.players.find((p) => p.id === payload.playerId)?.name ?? "Unknown",
+							amountCents: payload.amountCents,
+							soldAt: new Date().toISOString(),
+						};
+						
+						const updatedSoldLots = [soldLot, ...(prev.soldLots ?? [])];
+						
+						// Clear recent bids (only keep bids for current lot if it's open)
+						const clearedBids = nextLot && nextLot.status === "open" 
+							? prev.recentBids.filter((b) => b.lotId === nextLot.id)
+							: [];
+						
+						return {
+							...prev,
+							lots: updatedLots,
+							currentLot: nextLot,
+							recentBids: clearedBids,
+							soldLots: updatedSoldLots,
+						};
+					});
 				}
 				if (msg.type === "lot_opened") {
 					const payload = msg.payload as any;
@@ -141,19 +218,65 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 							l.id === payload.lotId
 								? {
 										...l,
-										status: "open",
+										status: "open" as const,
 										closesAt: payload.closesAt ?? l.closesAt,
 										openedAt: new Date().toISOString(),
+										acceptedBidderId: null, // Clear accepted bidder when opening
 									}
 								: l,
 						);
 						const newCurrentLot = updatedLots.find((l) => l.id === payload.lotId) ?? null;
+						// Clear recent bids when opening a new lot
 						return {
 							...prev,
 							lots: updatedLots,
 							currentLot: newCurrentLot,
+							recentBids: [],
 						};
 					});
+				}
+				if (msg.type === "bid_accepted") {
+					const payload = msg.payload as any;
+					setState((prev) => {
+						const updatedLots = prev.lots.map((l) =>
+							l.id === payload.lotId
+								? {
+										...l,
+										acceptedBidderId: payload.playerId,
+									}
+								: l,
+						);
+						const updatedCurrentLot =
+							prev.currentLot && prev.currentLot.id === payload.lotId
+								? {
+										...prev.currentLot,
+										acceptedBidderId: payload.playerId,
+									}
+								: prev.currentLot;
+						return {
+							...prev,
+							lots: updatedLots,
+							currentLot: updatedCurrentLot,
+						};
+					});
+				}
+				if (msg.type === "undo_last") {
+					const payload = msg.payload as any;
+					// Refetch state to get updated lot status and bids
+					fetch(`/api/events/${eventId}/state`)
+						.then((res) => res.json())
+						.then((newState) => {
+							setState({
+								event: newState.event,
+								ruleSet: newState.ruleSet,
+								players: newState.players,
+								lots: newState.lots,
+								currentLot: newState.currentLot,
+								recentBids: newState.recentBids,
+								soldLots: newState.soldLots,
+							});
+						})
+						.catch((err) => console.error("Failed to refetch state after undo:", err));
 				}
 			});
 		});
@@ -162,6 +285,41 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 			wsRef.current?.close();
 		};
 	}, [eventId]);
+
+	// Resize handler
+	useEffect(() => {
+		const handleMouseMove = (e: MouseEvent) => {
+			if (!isResizing) return;
+			const deltaX = e.clientX - resizeStartXRef.current;
+			const newWidth = Math.max(400, Math.min(1200, resizeStartWidthRef.current + deltaX));
+			setSidebarWidth(newWidth);
+		};
+
+		const handleMouseUp = () => {
+			setIsResizing(false);
+		};
+
+		if (isResizing) {
+			document.addEventListener("mousemove", handleMouseMove);
+			document.addEventListener("mouseup", handleMouseUp);
+			document.body.style.cursor = "col-resize";
+			document.body.style.userSelect = "none";
+		}
+
+		return () => {
+			document.removeEventListener("mousemove", handleMouseMove);
+			document.removeEventListener("mouseup", handleMouseUp);
+			document.body.style.cursor = "";
+			document.body.style.userSelect = "";
+		};
+	}, [isResizing]);
+
+	const handleResizeStart = (e: React.MouseEvent) => {
+		e.preventDefault();
+		setIsResizing(true);
+		resizeStartXRef.current = e.clientX;
+		resizeStartWidthRef.current = sidebarWidth;
+	};
 
 	const post = async (url: string, body?: any) => {
 		const res = await fetch(url, {
@@ -172,6 +330,64 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 		if (!res.ok) {
 			const e = await res.json().catch(() => ({}));
 			alert(e.error || "Request failed");
+			return false;
+		}
+		return true;
+	};
+
+	const handleBid = async (playerId: string, amountCents: number) => {
+		if (!currentLot || currentLot.status !== "open" || isSubmittingBid) return;
+		
+		// Basic client-side check (but don't show alert - let API handle validation with current data)
+		const minBid = currentLot.currentBidCents + (state.ruleSet?.minIncrementCents ?? 100);
+		if (amountCents < minBid) {
+			// Don't show alert here - the API will return a more accurate error with current bid info
+			// Just prevent the call if obviously too low
+			return;
+		}
+
+		setIsSubmittingBid(true);
+		const success = await post(`/api/lots/${currentLot.id}/bid`, {
+			playerId,
+			amountCents,
+		});
+		setIsSubmittingBid(false);
+		
+		if (success) {
+			setBidAmount(0);
+			setBidInputValue("");
+			setSelectedPlayerId(null);
+		}
+	};
+
+	const handleImportTeams = async () => {
+		const textarea = document.getElementById("team-import-textarea") as HTMLTextAreaElement;
+		if (!textarea) return;
+		
+		const teams = textarea.value
+			.split("\n")
+			.map((s) => s.trim())
+			.filter(Boolean)
+			.map((line) => {
+				const seedMatch = line.match(/^(.+?)\s*\(([A-Z]+)\s*#(\d+)\)$/);
+				if (seedMatch) {
+					return {
+						name: seedMatch[1].trim(),
+						region: seedMatch[2],
+						seed: parseInt(seedMatch[3], 10),
+					};
+				}
+				return { name: line };
+			});
+
+		if (teams.length === 0) {
+			alert("Please enter at least one team");
+			return;
+		}
+
+		const success = await post(`/api/events/${eventId}/import-teams`, { teams });
+		if (success) {
+			window.location.reload();
 		}
 	};
 
@@ -199,42 +415,90 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 		? `${currentLot.team.name} (${currentLot.team.region} #${currentLot.team.seed})`
 		: currentLot?.team.name ?? "No team";
 
-	const nextLot = currentLot
-		? state.lots
-				.filter((l) => l.orderIndex > currentLot.orderIndex)
-				.find((l) => l.status !== "sold")
-		: state.lots.find((l) => l.status === "pending");
-
 	return (
 		<div
 			style={{
 				display: "flex",
+				flexDirection: "column",
 				height: "100vh",
 				backgroundColor: "#0a0a0a",
 				color: "#e5e5e5",
 				fontFamily: "system-ui, -apple-system, sans-serif",
 			}}
 		>
+			<AuctionTimeline currentStep="auction" eventId={eventId} />
+			<div
+				style={{
+					display: "flex",
+					flex: 1,
+					overflow: "hidden",
+				}}
+			>
 			{/* Left Control Panel */}
 			<div
 				style={{
-					width: "400px",
+					width: `${sidebarWidth}px`,
+					minWidth: "400px",
+					maxWidth: "1200px",
 					borderRight: "1px solid #1f1f1f",
 					display: "flex",
 					flexDirection: "column",
 					backgroundColor: "#111111",
+					flexShrink: 0,
 				}}
 			>
-				<div style={{ padding: "24px", borderBottom: "1px solid #1f1f1f" }}>
-					<h1 style={{ margin: 0, fontSize: "20px", fontWeight: 600, color: "#f5f5f5" }}>
+				<div style={{ padding: "32px", borderBottom: "1px solid #1f1f1f" }}>
+					<h1 style={{ margin: 0, fontSize: "24px", fontWeight: 600, color: "#f5f5f5" }}>
 						{state.event.name}
 					</h1>
-					<div style={{ marginTop: "8px", fontSize: "14px", color: "#888" }}>
-						Presenter Dashboard
+					<div style={{ marginTop: "8px", fontSize: "14px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "12px" }}>
+						<span>Host Dashboard</span>
+						<a
+							href={`/audience/${eventId}`}
+							target="_blank"
+							rel="noopener noreferrer"
+							style={{
+								display: "flex",
+								alignItems: "center",
+								gap: "6px",
+								textDecoration: "none",
+								color: "#666",
+								fontSize: "12px",
+								fontFamily: "monospace",
+								textTransform: "none",
+								letterSpacing: "0",
+								cursor: "pointer",
+								transition: "color 0.2s",
+							}}
+							onMouseOver={(e) => {
+								e.currentTarget.style.color = "#888";
+							}}
+							onMouseOut={(e) => {
+								e.currentTarget.style.color = "#666";
+							}}
+						>
+							<span>ID {eventId}</span>
+							<svg
+								width="12"
+								height="12"
+								viewBox="0 0 12 12"
+								fill="none"
+								xmlns="http://www.w3.org/2000/svg"
+								style={{ opacity: 0.6 }}
+							>
+								<path
+									d="M2 2h8v8M10 2L2 10"
+									stroke="currentColor"
+									strokeWidth="1.5"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								/>
+							</svg>
+						</a>
 					</div>
 				</div>
 
-				<div style={{ padding: "24px", flex: 1, display: "flex", flexDirection: "column", gap: "24px" }}>
+				<div style={{ padding: "32px", flex: 1, display: "flex", flexDirection: "column", gap: "32px", overflowY: "auto" }}>
 					{/* Current Team */}
 					<div>
 						<div style={{ fontSize: "12px", color: "#888", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
@@ -283,29 +547,529 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 						</div>
 					</div>
 
+					{/* Players List */}
+					<div>
+						<div style={{ fontSize: "12px", color: "#888", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+							Players ({state.players.length})
+						</div>
+						<div style={{ display: "flex", flexWrap: "wrap", gap: "8px", maxHeight: "140px", overflowY: "auto" }}>
+							{state.players.map((player) => {
+								const isHighBidder = player.id === currentLot?.highBidderId;
+								const isSelected = selectedPlayerId === player.id;
+								const minBid = currentLot?.status === "open" 
+									? (currentLot.currentBidCents + (state.ruleSet?.minIncrementCents ?? 100))
+									: 0;
+								
+								const canSelect = currentLot?.status === "open" || currentLot?.status === "pending";
+								
+								// Priority: Selected (green) > High Bidder (yellow) > Default
+								// Only show one state at a time
+								const showAsSelected = isSelected && !isHighBidder;
+								const showAsHighBidder = isHighBidder && !isSelected;
+								
+								return (
+									<button
+										key={player.id}
+										onClick={() => {
+											if (canSelect) {
+												// Toggle: if clicking the same player, deselect; otherwise select the new one
+												if (selectedPlayerId === player.id) {
+													setSelectedPlayerId(null);
+													setBidAmount(0);
+												} else {
+													// Select this player (deselects any previous selection automatically)
+													setSelectedPlayerId(player.id);
+													if (currentLot?.status === "pending") {
+														const minOpeningBid = state.ruleSet?.minIncrementCents ?? 100;
+														setBidAmount(minOpeningBid);
+														setBidInputValue((minOpeningBid / 100).toFixed(2));
+													} else if (currentLot?.status === "open") {
+														setBidAmount(minBid);
+														setBidInputValue((minBid / 100).toFixed(2));
+													}
+												}
+											}
+										}}
+										style={{
+											padding: "10px 16px",
+											backgroundColor: showAsSelected 
+												? "#2a3a2a" 
+												: showAsHighBidder 
+													? "#2a2a1a" // Yellow tint background
+													: "#2a2a2a",
+											border: showAsSelected 
+												? "2px solid #4ade80" // Green border for selected
+												: showAsHighBidder 
+													? "2px solid #fbbf24" // Yellow border for high bidder
+													: "1px solid #444",
+											borderRadius: "8px",
+											fontSize: "14px",
+											color: showAsSelected 
+												? "#4ade80" // Green text for selected
+												: showAsHighBidder 
+													? "#fbbf24" // Yellow text for high bidder
+													: "#e5e5e5",
+											fontWeight: (showAsSelected || showAsHighBidder) ? 600 : 400,
+											cursor: canSelect ? "pointer" : "default",
+											transition: "all 0.2s",
+											boxShadow: showAsSelected 
+												? "0 2px 8px rgba(74, 222, 128, 0.2)" 
+												: showAsHighBidder 
+													? "0 2px 8px rgba(251, 191, 36, 0.2)" 
+													: "none",
+										}}
+										onMouseOver={(e) => {
+											if (canSelect && !showAsSelected) {
+												if (showAsHighBidder) {
+													e.currentTarget.style.backgroundColor = "#2a2a1a";
+													e.currentTarget.style.borderColor = "#fbbf24";
+												} else {
+													e.currentTarget.style.backgroundColor = "#333";
+													e.currentTarget.style.borderColor = "#555";
+												}
+												e.currentTarget.style.transform = "translateY(-1px)";
+											}
+										}}
+										onMouseOut={(e) => {
+											if (!showAsSelected) {
+												if (showAsHighBidder) {
+													e.currentTarget.style.backgroundColor = "#2a2a1a";
+													e.currentTarget.style.borderColor = "#fbbf24";
+												} else {
+													e.currentTarget.style.backgroundColor = "#2a2a2a";
+													e.currentTarget.style.borderColor = "#444";
+												}
+												e.currentTarget.style.transform = "translateY(0)";
+											}
+										}}
+									>
+										{player.name}
+									</button>
+								);
+							})}
+						</div>
+					</div>
+
+					{/* Team Import Section (if no teams) */}
+					{showTeamImport && (
+						<div style={{ marginTop: "24px", padding: "20px", backgroundColor: "#1a1a1a", borderRadius: "8px", border: "1px solid #333" }}>
+							<div style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px", color: "#fff" }}>
+								Import Teams
+							</div>
+							<textarea
+								id="team-import-textarea"
+								rows={6}
+								placeholder="Kansas City Chiefs (AFC #1)&#10;Buffalo Bills (AFC #2)&#10;..."
+								style={{
+									width: "100%",
+									padding: "12px",
+									backgroundColor: "#0a0a0a",
+									color: "#e5e5e5",
+									border: "1px solid #333",
+									borderRadius: "6px",
+									fontSize: "14px",
+									fontFamily: "inherit",
+									resize: "vertical",
+								}}
+							/>
+							<button
+								onClick={handleImportTeams}
+								style={{
+									marginTop: "12px",
+									padding: "10px 20px",
+									backgroundColor: "#4ade80",
+									color: "#000",
+									border: "none",
+									borderRadius: "6px",
+									fontSize: "14px",
+									fontWeight: 600,
+									cursor: "pointer",
+									width: "100%",
+								}}
+							>
+								Import & Randomize Teams
+							</button>
+						</div>
+					)}
+
+					{/* Quick Bid Section (when team is open) */}
+					{currentLot && currentLot.status === "open" && (
+						<div style={{ marginTop: "auto", padding: "24px", backgroundColor: "#1a1a1a", borderRadius: "12px", border: "1px solid #333" }}>
+							<div style={{ fontSize: "14px", fontWeight: 600, marginBottom: "16px", color: "#fff", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+								Quick Bid
+							</div>
+							{/* Bid Amount Input */}
+							<div style={{ marginBottom: "12px" }}>
+								<input
+									type="text"
+									inputMode="decimal"
+									value={bidInputValue}
+									onChange={(e) => {
+										const val = e.target.value;
+										// Allow empty string, numbers, and one decimal point
+										if (val === "" || /^\d*\.?\d*$/.test(val)) {
+											setBidInputValue(val);
+											// Update bidAmount in cents for validation
+											const numVal = parseFloat(val) || 0;
+											setBidAmount(Math.round(numVal * 100));
+										}
+									}}
+									onBlur={() => {
+										// Format the value on blur
+										if (bidInputValue) {
+											const numVal = parseFloat(bidInputValue);
+											if (!isNaN(numVal) && numVal > 0) {
+												setBidInputValue(numVal.toFixed(2));
+											} else {
+												setBidInputValue("");
+											}
+										}
+									}}
+									placeholder={`Min: $${((currentLot.currentBidCents + (state.ruleSet?.minIncrementCents ?? 100)) / 100).toFixed(2)}`}
+									style={{
+										width: "100%",
+										padding: "10px",
+										backgroundColor: "#0a0a0a",
+										color: "#e5e5e5",
+										border: "1px solid #333",
+										borderRadius: "6px",
+										fontSize: "16px",
+										fontFamily: "inherit",
+									}}
+								/>
+								<div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+									<button
+										onClick={() => {
+											const minBid = currentLot.currentBidCents + (state.ruleSet?.minIncrementCents ?? 100);
+											setBidAmount(minBid);
+											setBidInputValue((minBid / 100).toFixed(2));
+										}}
+										style={{
+											flex: 1,
+											padding: "8px",
+											backgroundColor: "#2a2a2a",
+											color: "#e5e5e5",
+											border: "1px solid #444",
+											borderRadius: "4px",
+											fontSize: "12px",
+											cursor: "pointer",
+										}}
+									>
+										Min
+									</button>
+									<button
+										onClick={() => {
+											setBidAmount((b) => {
+												const newAmount = b + 100;
+												setBidInputValue((newAmount / 100).toFixed(2));
+												return newAmount;
+											});
+										}}
+										style={{
+											flex: 1,
+											padding: "8px",
+											backgroundColor: "#2a2a2a",
+											color: "#e5e5e5",
+											border: "1px solid #444",
+											borderRadius: "4px",
+											fontSize: "12px",
+											cursor: "pointer",
+										}}
+									>
+										+$1
+									</button>
+									<button
+										onClick={() => {
+											setBidAmount((b) => {
+												const newAmount = b + 500;
+												setBidInputValue((newAmount / 100).toFixed(2));
+												return newAmount;
+											});
+										}}
+										style={{
+											flex: 1,
+											padding: "8px",
+											backgroundColor: "#2a2a2a",
+											color: "#e5e5e5",
+											border: "1px solid #444",
+											borderRadius: "4px",
+											fontSize: "12px",
+											cursor: "pointer",
+										}}
+									>
+										+$5
+									</button>
+									<button
+										onClick={() => {
+											setBidAmount((b) => {
+												const newAmount = b + 1000;
+												setBidInputValue((newAmount / 100).toFixed(2));
+												return newAmount;
+											});
+										}}
+										style={{
+											flex: 1,
+											padding: "8px",
+											backgroundColor: "#2a2a2a",
+											color: "#e5e5e5",
+											border: "1px solid #444",
+											borderRadius: "4px",
+											fontSize: "12px",
+											cursor: "pointer",
+										}}
+									>
+										+$10
+									</button>
+								</div>
+							</div>
+							{/* Player Buttons - for placing bids */}
+							<div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", maxHeight: "200px", overflowY: "auto" }}>
+								{state.players.map((player) => {
+									const isSelected = selectedPlayerId === player.id;
+									const minBid = currentLot.currentBidCents + (state.ruleSet?.minIncrementCents ?? 100);
+									const canBid = bidAmount >= minBid;
+									return (
+										<button
+											key={player.id}
+											onClick={() => {
+												if (isSubmittingBid) return;
+												if (bidAmount >= minBid) {
+													handleBid(player.id, bidAmount);
+												} else {
+													// If bid amount is too low, select player and set to minimum
+													setSelectedPlayerId(player.id);
+													setBidAmount(minBid);
+													setBidInputValue((minBid / 100).toFixed(2));
+												}
+											}}
+											disabled={isSubmittingBid}
+											style={{
+												padding: "12px",
+												backgroundColor: isSelected ? "#2a3a2a" : "#2a2a2a",
+												color: isSelected ? "#4ade80" : "#e5e5e5",
+												border: isSelected ? "2px solid #4ade80" : "1px solid #444",
+												borderRadius: "6px",
+												fontSize: "14px",
+												fontWeight: isSelected ? 600 : 500,
+												cursor: isSubmittingBid ? "wait" : "pointer",
+												opacity: isSubmittingBid ? 0.5 : (canBid ? 1 : 0.7),
+												transition: "all 0.2s",
+											}}
+											onMouseOver={(e) => {
+												if (!isSelected) {
+													e.currentTarget.style.backgroundColor = "#333";
+													e.currentTarget.style.borderColor = "#555";
+												}
+											}}
+											onMouseOut={(e) => {
+												if (!isSelected) {
+													e.currentTarget.style.backgroundColor = "#2a2a2a";
+													e.currentTarget.style.borderColor = "#444";
+												}
+											}}
+										>
+											{player.name}
+										</button>
+									);
+								})}
+							</div>
+						</div>
+					)}
+
 					{/* Host Controls */}
-					<div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "12px" }}>
+					<div style={{ marginTop: "24px", display: "flex", flexDirection: "column", gap: "12px" }}>
 						{currentLot && (
 							<>
 								{currentLot.status !== "open" ? (
-									<button
-										onClick={() => post(`/api/lots/${currentLot.id}/open`)}
-										style={{
-											padding: "14px 24px",
-											backgroundColor: "#4ade80",
-											color: "#000",
-											border: "none",
-											borderRadius: "8px",
-											fontSize: "16px",
-											fontWeight: 600,
-											cursor: "pointer",
-											transition: "background-color 0.2s",
-										}}
-										onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#22c55e")}
-										onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#4ade80")}
-									>
-										Open Lot
-									</button>
+									<>
+										{/* Opening Bid Input (when team is pending) */}
+										<div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+											<input
+												type="text"
+												inputMode="decimal"
+												value={bidInputValue}
+												onChange={(e) => {
+													const val = e.target.value;
+													// Allow empty string, numbers, and one decimal point
+													if (val === "" || /^\d*\.?\d*$/.test(val)) {
+														setBidInputValue(val);
+														// Update bidAmount in cents for validation
+														const numVal = parseFloat(val) || 0;
+														setBidAmount(Math.round(numVal * 100));
+													}
+												}}
+												onBlur={() => {
+													// Format the value on blur
+													if (bidInputValue) {
+														const numVal = parseFloat(bidInputValue);
+														if (!isNaN(numVal) && numVal > 0) {
+															setBidInputValue(numVal.toFixed(2));
+														} else {
+															setBidInputValue("");
+														}
+													}
+												}}
+												placeholder={`Opening bid (min: $${((state.ruleSet?.minIncrementCents ?? 100) / 100).toFixed(2)})`}
+												style={{
+													width: "100%",
+													padding: "10px",
+													backgroundColor: "#0a0a0a",
+													color: "#e5e5e5",
+													border: "1px solid #333",
+													borderRadius: "6px",
+													fontSize: "14px",
+													fontFamily: "inherit",
+												}}
+											/>
+											<div style={{ display: "flex", gap: "6px" }}>
+												<button
+													onClick={() => {
+														const minBid = state.ruleSet?.minIncrementCents ?? 100;
+														setBidAmount(minBid);
+														setBidInputValue((minBid / 100).toFixed(2));
+													}}
+													style={{
+														flex: 1,
+														padding: "6px",
+														backgroundColor: "#2a2a2a",
+														color: "#e5e5e5",
+														border: "1px solid #444",
+														borderRadius: "4px",
+														fontSize: "11px",
+														cursor: "pointer",
+													}}
+												>
+													Min
+												</button>
+												<button
+													onClick={() => {
+														setBidAmount((b) => {
+															const newAmount = b + 100;
+															setBidInputValue((newAmount / 100).toFixed(2));
+															return newAmount;
+														});
+													}}
+													style={{
+														flex: 1,
+														padding: "6px",
+														backgroundColor: "#2a2a2a",
+														color: "#e5e5e5",
+														border: "1px solid #444",
+														borderRadius: "4px",
+														fontSize: "11px",
+														cursor: "pointer",
+													}}
+												>
+													+$1
+												</button>
+												<button
+													onClick={() => {
+														setBidAmount((b) => {
+															const newAmount = b + 500;
+															setBidInputValue((newAmount / 100).toFixed(2));
+															return newAmount;
+														});
+													}}
+													style={{
+														flex: 1,
+														padding: "6px",
+														backgroundColor: "#2a2a2a",
+														color: "#e5e5e5",
+														border: "1px solid #444",
+														borderRadius: "4px",
+														fontSize: "11px",
+														cursor: "pointer",
+													}}
+												>
+													+$5
+												</button>
+												<button
+													onClick={() => {
+														setBidAmount((b) => {
+															const newAmount = b + 1000;
+															setBidInputValue((newAmount / 100).toFixed(2));
+															return newAmount;
+														});
+													}}
+													style={{
+														flex: 1,
+														padding: "6px",
+														backgroundColor: "#2a2a2a",
+														color: "#e5e5e5",
+														border: "1px solid #444",
+														borderRadius: "4px",
+														fontSize: "11px",
+														cursor: "pointer",
+													}}
+												>
+													+$10
+												</button>
+											</div>
+										</div>
+										<button
+											onClick={async () => {
+												if (!selectedPlayerId) {
+													alert("Please select a player for the opening bid");
+													return;
+												}
+												const minBid = state.ruleSet?.minIncrementCents ?? 100;
+												if (bidAmount < minBid) {
+													alert(`Opening bid must be at least $${(minBid / 100).toFixed(2)}`);
+													return;
+												}
+												const res = await fetch(`/api/lots/${currentLot.id}/open`, {
+													method: "POST",
+													headers: { "content-type": "application/json" },
+													body: JSON.stringify({
+														playerId: selectedPlayerId,
+														openingBidCents: bidAmount,
+													}),
+												});
+												
+												if (!res.ok) {
+													const e = await res.json().catch(() => ({}));
+													// If team is already open, refresh the page to sync state
+													if (e.error?.includes("already open") || e.error?.includes("current status: open")) {
+														alert("Team is already open. Refreshing page...");
+														window.location.reload();
+														return;
+													}
+													alert(e.error || "Request failed");
+													return;
+												}
+												
+												setShowTeamImport(false);
+												setBidAmount(0);
+												setBidInputValue("");
+												setSelectedPlayerId(null);
+											}}
+											disabled={!selectedPlayerId || bidAmount < (state.ruleSet?.minIncrementCents ?? 100)}
+											style={{
+												padding: "14px 24px",
+												backgroundColor: (selectedPlayerId && bidAmount >= (state.ruleSet?.minIncrementCents ?? 100)) ? "#4ade80" : "#666",
+												color: "#000",
+												border: "none",
+												borderRadius: "8px",
+												fontSize: "16px",
+												fontWeight: 600,
+												cursor: (selectedPlayerId && bidAmount >= (state.ruleSet?.minIncrementCents ?? 100)) ? "pointer" : "not-allowed",
+												transition: "background-color 0.2s",
+												opacity: (selectedPlayerId && bidAmount >= (state.ruleSet?.minIncrementCents ?? 100)) ? 1 : 0.6,
+											}}
+											onMouseOver={(e) => {
+												if (selectedPlayerId && bidAmount >= (state.ruleSet?.minIncrementCents ?? 100)) {
+													e.currentTarget.style.backgroundColor = "#22c55e";
+												}
+											}}
+											onMouseOut={(e) => {
+												if (selectedPlayerId && bidAmount >= (state.ruleSet?.minIncrementCents ?? 100)) {
+													e.currentTarget.style.backgroundColor = "#4ade80";
+												}
+											}}
+										>
+											Start Bidding
+										</button>
+									</>
 								) : (
 									<>
 										<button
@@ -325,22 +1089,41 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 											{isPaused ? "Resume Timer" : "Pause Timer"}
 										</button>
 										<button
-											onClick={() => post(`/api/lots/${currentLot.id}/sell`)}
+											onClick={async () => {
+												if (!currentLot.highBidderId) {
+													alert("No bid to accept");
+													return;
+												}
+												const success = await post(`/api/lots/${currentLot.id}/accept`);
+												if (!success) {
+													alert("Failed to sell team. Please try again or refresh the page.");
+												}
+											}}
+											disabled={!currentLot.highBidderId}
 											style={{
 												padding: "14px 24px",
-												backgroundColor: "#ef4444",
-												color: "#fff",
+												backgroundColor: currentLot.highBidderId ? "#4ade80" : "#666",
+												color: "#000",
 												border: "none",
 												borderRadius: "8px",
 												fontSize: "16px",
 												fontWeight: 600,
-												cursor: "pointer",
+												cursor: currentLot.highBidderId ? "pointer" : "not-allowed",
 												transition: "background-color 0.2s",
+												opacity: currentLot.highBidderId ? 1 : 0.6,
 											}}
-											onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#dc2626")}
-											onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#ef4444")}
+											onMouseOver={(e) => {
+												if (currentLot.highBidderId) {
+													e.currentTarget.style.backgroundColor = "#22c55e";
+												}
+											}}
+											onMouseOut={(e) => {
+												if (currentLot.highBidderId) {
+													e.currentTarget.style.backgroundColor = "#4ade80";
+												}
+											}}
 										>
-											Accept Bid & Advance
+											Sell Team & Advance
 										</button>
 									</>
 								)}
@@ -360,81 +1143,178 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 									onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#2a2a2a")}
 									onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#1f1f1f")}
 								>
-									Undo Last Sale
+									Undo Last
 								</button>
 							</>
-						)}
-						{nextLot && (
-							<div style={{ marginTop: "16px", padding: "12px", backgroundColor: "#1a1a1a", borderRadius: "8px" }}>
-								<div style={{ fontSize: "12px", color: "#888", marginBottom: "4px" }}>Next Up</div>
-								<div style={{ fontSize: "16px", fontWeight: 600 }}>
-									{nextLot.team.seed
-										? `${nextLot.team.name} (${nextLot.team.region} #${nextLot.team.seed})`
-										: nextLot.team.name}
-								</div>
-							</div>
 						)}
 					</div>
 				</div>
 			</div>
 
-			{/* Right Activity Feed */}
-			<div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-				<div style={{ padding: "24px", borderBottom: "1px solid #1f1f1f" }}>
-					<h2 style={{ margin: 0, fontSize: "18px", fontWeight: 600 }}>Activity Feed</h2>
-				</div>
-				<div
-					style={{
-						flex: 1,
-						overflowY: "auto",
-						padding: "24px",
-						display: "flex",
-						flexDirection: "column",
-						gap: "12px",
-					}}
-				>
-					{state.recentBids.length === 0 ? (
-						<div style={{ color: "#666", fontSize: "14px", textAlign: "center", marginTop: "48px" }}>
-							No bids yet
+			{/* Resizer */}
+			<div
+				onMouseDown={handleResizeStart}
+				style={{
+					width: "4px",
+					cursor: "col-resize",
+					backgroundColor: isResizing ? "#4ade80" : "#1f1f1f",
+					flexShrink: 0,
+					transition: "background-color 0.2s",
+				}}
+				onMouseEnter={(e) => {
+					if (!isResizing) {
+						e.currentTarget.style.backgroundColor = "#333";
+					}
+				}}
+				onMouseLeave={(e) => {
+					if (!isResizing) {
+						e.currentTarget.style.backgroundColor = "#1f1f1f";
+					}
+				}}
+			/>
+
+			{/* Right Side - Activity Feed and Sold Teams */}
+			<div style={{ flex: "1 1 0%", minWidth: "300px", display: "flex", flexDirection: "column", overflow: "hidden", backgroundColor: "#0f0f0f" }}>
+				{/* Activity Feed Section */}
+				<div style={{ flex: "1 1 0%", display: "flex", flexDirection: "column", overflow: "hidden", borderBottom: "1px solid #1f1f1f" }}>
+					<div style={{ padding: "24px", borderBottom: "1px solid #1f1f1f", backgroundColor: "#111111" }}>
+						<h2 style={{ margin: 0, fontSize: "18px", fontWeight: 600, color: "#f5f5f5" }}>Activity Feed</h2>
+						<div style={{ marginTop: "4px", fontSize: "12px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+							{state.recentBids.length} {state.recentBids.length === 1 ? "bid" : "bids"}
 						</div>
-					) : (
-						state.recentBids.map((bid) => {
-							const isCurrentLot = bid.lotId === currentLot?.id;
-							return (
+					</div>
+					<div
+						style={{
+							flex: 1,
+							overflowY: "auto",
+							padding: "24px",
+							display: "flex",
+							flexDirection: "column",
+							gap: "16px",
+						}}
+					>
+						{state.recentBids.length === 0 ? (
+							<div style={{ 
+								color: "#666", 
+								fontSize: "16px", 
+								textAlign: "center", 
+								marginTop: "32px",
+								padding: "24px",
+								backgroundColor: "#1a1a1a",
+								borderRadius: "12px",
+								border: "1px dashed #2a2a2a"
+							}}>
+								<div style={{ fontSize: "48px", marginBottom: "16px", opacity: 0.3 }}>📊</div>
+								<div>No bids yet</div>
+								<div style={{ fontSize: "14px", color: "#555", marginTop: "8px" }}>
+									Bids will appear here as they come in
+								</div>
+							</div>
+						) : (
+							state.recentBids.map((bid) => {
+								const isCurrentLot = bid.lotId === currentLot?.id;
+								return (
+									<div
+										key={bid.id}
+										style={{
+											padding: "16px",
+											backgroundColor: isCurrentLot ? "#1a2e1a" : "#1a1a1a",
+											borderRadius: "12px",
+											border: isCurrentLot ? "2px solid #4ade80" : "1px solid #2a2a2a",
+											transition: "all 0.2s",
+											boxShadow: isCurrentLot ? "0 4px 12px rgba(74, 222, 128, 0.15)" : "none",
+										}}
+									>
+										<div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+											<div style={{ flex: 1 }}>
+												<div style={{ fontSize: "16px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>
+													{bid.playerName}
+												</div>
+												<div style={{ fontSize: "12px", color: "#888" }}>
+													{bid.teamName}
+												</div>
+											</div>
+											<div style={{ textAlign: "right", marginLeft: "12px" }}>
+												<div style={{ fontSize: "20px", fontWeight: 700, color: "#4ade80", lineHeight: 1.2 }}>
+													${(bid.amountCents / 100).toFixed(2)}
+												</div>
+												<div style={{ fontSize: "11px", color: "#666", marginTop: "2px" }}>
+													{new Date(bid.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+												</div>
+											</div>
+										</div>
+									</div>
+								);
+							})
+						)}
+					</div>
+				</div>
+
+				{/* Sold Teams / Owners Section */}
+				<div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", overflow: "hidden", maxHeight: "40%", borderTop: "2px solid #1f1f1f" }}>
+					<div style={{ padding: "24px", borderBottom: "1px solid #1f1f1f", backgroundColor: "#111111" }}>
+						<h2 style={{ margin: 0, fontSize: "18px", fontWeight: 600, color: "#f5f5f5" }}>Owned Teams</h2>
+						<div style={{ marginTop: "4px", fontSize: "12px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+							{(state.soldLots ?? []).length} {(state.soldLots ?? []).length === 1 ? "team" : "teams"}
+						</div>
+					</div>
+					<div
+						style={{
+							flex: 1,
+							overflowY: "auto",
+							padding: "24px",
+							display: "flex",
+							flexDirection: "column",
+							gap: "12px",
+						}}
+					>
+						{(state.soldLots ?? []).length === 0 ? (
+							<div style={{ 
+								color: "#666", 
+								fontSize: "14px", 
+								textAlign: "center", 
+								padding: "24px",
+								backgroundColor: "#1a1a1a",
+								borderRadius: "12px",
+								border: "1px dashed #2a2a2a"
+							}}>
+								<div style={{ fontSize: "32px", marginBottom: "8px", opacity: 0.3 }}>🏆</div>
+								<div>No teams sold yet</div>
+							</div>
+						) : (
+							(state.soldLots ?? []).map((soldLot) => (
 								<div
-									key={bid.id}
+									key={soldLot.lotId}
 									style={{
-										padding: "16px",
-										backgroundColor: isCurrentLot ? "#1a2e1a" : "#1a1a1a",
-										borderRadius: "8px",
-										border: isCurrentLot ? "1px solid #4ade80" : "1px solid #2a2a2a",
+										padding: "14px",
+										backgroundColor: "#1a1a1a",
+										borderRadius: "10px",
+										border: "1px solid #2a2a2a",
+										transition: "all 0.2s",
 									}}
 								>
 									<div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
-										<div>
-											<div style={{ fontSize: "16px", fontWeight: 600, color: "#fff" }}>
-												{bid.playerName}
+										<div style={{ flex: 1 }}>
+											<div style={{ fontSize: "14px", fontWeight: 600, color: "#4ade80", marginBottom: "4px" }}>
+												{soldLot.teamName}
 											</div>
-											<div style={{ fontSize: "14px", color: "#888", marginTop: "4px" }}>
-												{bid.teamName}
+											<div style={{ fontSize: "12px", color: "#aaa" }}>
+												{soldLot.playerName}
 											</div>
 										</div>
-										<div style={{ textAlign: "right" }}>
-											<div style={{ fontSize: "20px", fontWeight: 700, color: "#4ade80" }}>
-												${(bid.amountCents / 100).toFixed(2)}
-											</div>
-											<div style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>
-												{new Date(bid.createdAt).toLocaleTimeString()}
+										<div style={{ textAlign: "right", marginLeft: "12px" }}>
+											<div style={{ fontSize: "16px", fontWeight: 700, color: "#fff", lineHeight: 1.2 }}>
+												${(soldLot.amountCents / 100).toFixed(2)}
 											</div>
 										</div>
 									</div>
 								</div>
-							);
-						})
-					)}
+							))
+						)}
+					</div>
 				</div>
+			</div>
 			</div>
 		</div>
 	);
 }
-

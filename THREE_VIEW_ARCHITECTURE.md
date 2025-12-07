@@ -273,3 +273,4 @@ The three-view architecture provides:
 
 Each view serves a specific purpose and together they create a complete auction management system.
 
+

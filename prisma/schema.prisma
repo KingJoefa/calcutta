@@ -116,6 +116,7 @@ model Lot {
   closesAt      DateTime?
   currentBidCents Int      @default(0)
   highBidderId  String? // playerId
+  acceptedBidderId String? // playerId - set when host accepts a bid, required before selling
   bids          Bid[]
   sale          Sale?
 
