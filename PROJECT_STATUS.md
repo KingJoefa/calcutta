@@ -1,7 +1,7 @@
-# NFL Calcutta Auction - Project Status Digest
+# Football Calcutta Style Auction - Project Status Digest
 
 ## Overview
-A real-time NFL Calcutta auction web application built with Next.js 16, PostgreSQL, Prisma, and WebSockets. The system enables live auction management with two views: Presenter Dashboard (host/admin control) and Audience View (public bidding).
+A real-time Football Calcutta Style auction web application built with Next.js 16, PostgreSQL, Prisma, and WebSockets. The system enables live auction management with two views: Presenter Dashboard (host/admin control) and Audience View (public bidding).
 
 ---
 
@@ -108,7 +108,7 @@ A real-time NFL Calcutta auction web application built with Next.js 16, PostgreS
 
 ### ✅ Auction Flow
 1. **Event Creation**: Host creates event with players and rules
-2. **Team Import**: Host imports NFL teams (supports seed, region, bracket)
+2. **Team Import**: Host imports Football teams (supports seed, region, bracket)
 3. **Randomization**: Teams randomized into auction lots using deterministic RNG
 4. **Lot Opening**: Host opens lot, timer starts
 5. **Bidding**: Players submit bids via Audience view or Presenter Dashboard

@@ -3,7 +3,7 @@
 export function ImportAndRandomize({ eventId }: { eventId: string }) {
 	return (
 		<div style={{ display: "grid", gap: 8 }}>
-			<h3>Import 14 NFL Teams (one per line)</h3>
+			<h3>Import 14 Football Teams (one per line)</h3>
 			<textarea id="teams" rows={8} placeholder="Team A&#10;Team B" />
 			<button
 				onClick={async () => {
@@ -23,7 +23,7 @@ export function ImportAndRandomize({ eventId }: { eventId: string }) {
 					location.reload();
 				}}
 			>
-				Import NFL Teams
+				Import Football Teams
 			</button>
 		</div>
 	);

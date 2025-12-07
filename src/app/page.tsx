@@ -30,7 +30,7 @@ export default function Home() {
 						try {
 							const form = e.target as HTMLFormElement;
 							const data = new FormData(form);
-						const eventName = (data.get("name") as string) || "NFL Calcutta Demo Event";
+						const eventName = (data.get("name") as string) || "Football Calcutta Style Demo Event";
 						const playersText = (data.get("players") as string) || "";
 						const teamsText = (data.get("teams") as string) || "";
 						
@@ -232,13 +232,13 @@ export default function Home() {
 					</div>
 
 					<div className={styles.section}>
-						<h2 className={styles.sectionTitle}>NFL Teams</h2>
+						<h2 className={styles.sectionTitle}>Football Teams</h2>
 						<div className={styles.field}>
 							<label htmlFor="teams" className={styles.label}>
 								Team List
 							</label>
 							<span className={styles.helperText}>
-								One team per line (typically 14 teams for NFL playoffs). 
+								One team per line (typically 14 teams for Football playoffs). 
 								Optional: include seed/region info (e.g., "Kansas City Chiefs (AFC #1)").
 								Leave blank to import teams later.
 							</span>

@@ -1,7 +1,7 @@
-# NFL Calcutta Auction - Operating Instructions
+# Football Calcutta Style Auction - Operating Instructions
 
 ## Overview
-This guide explains how to run an NFL Calcutta auction using the web application. The app provides two views: **Presenter Dashboard** (host/admin control center) and **Audience View** (public bidding).
+This guide explains how to run a Football Calcutta Style auction using the web application. The app provides two views: **Presenter Dashboard** (host/admin control center) and **Audience View** (public bidding).
 
 ---
 
@@ -25,7 +25,7 @@ This guide explains how to run an NFL Calcutta auction using the web application
    - You'll be redirected to the Presenter Dashboard
    - Ante is automatically charged to all players
 
-### 2. Import NFL Teams
+### 2. Import Football Teams
 
 **Location**: Presenter Dashboard (`/presenter/[eventId]`)
 
@@ -38,9 +38,9 @@ This guide explains how to run an NFL Calcutta auction using the web application
    Baltimore Ravens
    ...
    ```
-   - Supports 14 teams (standard NFL playoff bracket)
+   - Supports 14 teams (standard Football playoff bracket)
    - Can include seed/region info: `Kansas City Chiefs (AFC #1)`
-3. **Click "Import NFL Teams"**
+3. **Click "Import Football Teams"**
    - Teams are automatically randomized into auction lots
    - **⚠️ IMPORTANT**: Do not click "Import" again after randomization
    - The order is deterministic based on the event's RNG seed
@@ -151,7 +151,7 @@ The app uses **additive payout percentages** based on playoff round wins:
 
 **CSV Export Contains**:
 - Player name and handle
-- NFL teams won
+- Football teams won
 - Total spent (cents)
 - Ante paid (cents)
 - Net amount owed
@@ -245,7 +245,7 @@ Net Payout = (Winnings from teams) - (Total Spent) - (Ante)
 ## Troubleshooting
 
 **Issue**: Teams not randomizing
-- **Solution**: Ensure you clicked "Import NFL Teams" only once
+- **Solution**: Ensure you clicked "Import Football Teams" only once
 
 **Issue**: Bids not appearing in real-time
 - **Solution**: Check WebSocket connection, refresh page if needed
@@ -266,7 +266,7 @@ Net Payout = (Winnings from teams) - (Total Spent) - (Ante)
 | Action | Location | Button/Control |
 |--------|----------|---------------|
 | Create Event | Home (`/`) | "Create Event" |
-| Import Teams | Presenter Dashboard | "Import NFL Teams" |
+| Import Teams | Presenter Dashboard | "Import Football Teams" |
 | Open Lot | Presenter Dashboard | "Open Lot" |
 | Place Bid | Audience View | "Bid" button |
 | Accept Sale | Presenter Dashboard | "Accept Bid & Advance" |

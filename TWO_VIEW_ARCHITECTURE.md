@@ -2,7 +2,7 @@
 
 ## Overview
 
-The NFL Calcutta auction application uses a **two-view architecture** that separates concerns based on user roles and use cases. Each view serves a distinct purpose and has different levels of access and functionality.
+The Football Calcutta Style auction application uses a **two-view architecture** that separates concerns based on user roles and use cases. Each view serves a distinct purpose and has different levels of access and functionality.
 
 ---
 
@@ -31,7 +31,7 @@ The NFL Calcutta auction application uses a **two-view architecture** that separ
   - Undo Last Sale
 - ✅ **Activity Feed**: Right panel showing last 50 bids in real-time
 - ✅ **Next Team Preview**: Shows upcoming team
-- ✅ **Team Import**: Import NFL teams and trigger randomization (when no teams exist)
+- ✅ **Team Import**: Import Football teams and trigger randomization (when no teams exist)
 - ✅ **Player Management**: View all registered players
 - ✅ **Full Lot Management**: Can see all lots and their status
 

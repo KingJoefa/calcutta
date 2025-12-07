@@ -8,7 +8,7 @@ async function main() {
 		return;
 	}
 	const rngSeed = process.env.DEMO_RNG_SEED || "calcutta-demo-seed";
-	const name = "NFL Calcutta Demo Event";
+	const name = "Football Calcutta Style Demo Event";
 	const roundAllocations = {
 		wildcard: 0.1,
 		divisional: 0.2,
@@ -21,7 +21,7 @@ async function main() {
 		{ name: "Carol", handle: "@carol" },
 		{ name: "Dave", handle: "@dave" },
 	];
-	// 2024 NFL Playoff Teams with actual seeds and bracket positions
+	// 2024 Football Playoff Teams with actual seeds and bracket positions
 	const teams = [
 		// AFC
 		{ name: "Baltimore Ravens", seed: 1, region: "AFC", bracket: "AFC_North" },
@@ -77,7 +77,7 @@ async function main() {
 	});
 
 	// Create lots in randomized auction order (teams still retain their playoff seed data)
-	// The auction order is randomized, but teams keep their actual NFL playoff seeds
+	// The auction order is randomized, but teams keep their actual Football playoff seeds
 	const shuffledTeams = shuffleDeterministic([...event.teams], rngSeed);
 	await prisma.lot.createMany({
 		data: shuffledTeams.map((team, idx) => ({
@@ -100,7 +100,7 @@ async function main() {
 		});
 
 		console.log("Seeded Demo Event:", event.id);
-		console.log(`  - ${event.teams.length} NFL teams (2024 NFL Playoff bracket) randomized into auction lots`);
+		console.log(`  - ${event.teams.length} Football teams (2024 Football Playoff bracket) randomized into auction lots`);
 		console.log(`  - Teams retain their actual playoff seeds (1-7 per conference)`);
 		console.log(`  - ${event.players.length} players with antes charged`);
 }

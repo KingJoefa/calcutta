@@ -42,7 +42,7 @@ export async function GET(
 		const records = players.map((p) => ({
 			Player: p.name,
 			Handle: p.handle ?? "",
-			"NFL Teams": teamsWonByPlayer[p.id].join("; "),
+			"Football Teams": teamsWonByPlayer[p.id].join("; "),
 			SpentCents: purchasesByPlayer[p.id],
 			AnteCents: anteByPlayer[p.id],
 			NetOwedCents: purchasesByPlayer[p.id] + anteByPlayer[p.id],

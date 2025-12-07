@@ -1,6 +1,6 @@
-# NFL Calcutta Auction
+# Football Calcutta Style Auction
 
-A real-time NFL Calcutta auction web application built with Next.js 16, PostgreSQL, and WebSockets.
+A real-time Football Calcutta Style auction web application built with Next.js 16, PostgreSQL, and WebSockets.
 
 ## Quick Start
 
