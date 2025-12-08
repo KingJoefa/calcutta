@@ -78,6 +78,8 @@ export async function GET(
 				acceptedBidderId: l.acceptedBidderId,
 				openedAt: l.openedAt?.toISOString(),
 				closesAt: l.closesAt?.toISOString(),
+				pausedAt: l.pausedAt?.toISOString() ?? null,
+				pauseDurationSeconds: l.pauseDurationSeconds,
 				team: {
 					id: l.team.id,
 					name: l.team.name,
@@ -96,6 +98,8 @@ export async function GET(
 						acceptedBidderId: currentLot.acceptedBidderId,
 						openedAt: currentLot.openedAt?.toISOString(),
 						closesAt: currentLot.closesAt?.toISOString(),
+						pausedAt: currentLot.pausedAt?.toISOString() ?? null,
+						pauseDurationSeconds: currentLot.pauseDurationSeconds,
 						team: {
 							id: currentLot.team.id,
 							name: currentLot.team.name,

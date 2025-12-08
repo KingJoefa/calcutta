@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useMemo } from "react";
-import { connectWs, type Message } from "../client/wsClient";
+import { connectWs, type Message, type ConnectionStatus } from "../client/wsClient";
 import { AuctionTimeline } from "./AuctionTimeline";
 
 type Player = { id: string; name: string; handle?: string | null };
@@ -15,6 +15,8 @@ type Lot = {
 	acceptedBidderId: string | null;
 	openedAt: string | null;
 	closesAt: string | null;
+	pausedAt: string | null;
+	pauseDurationSeconds: number;
 	team: Team;
 };
 type Bid = {
@@ -50,6 +52,7 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 	const [state, setState] = useState<AuctionState>(initialState);
 	const [bidHistory, setBidHistory] = useState<Bid[]>(initialState.recentBids ?? []);
 	const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+	const [refreshCountdown, setRefreshCountdown] = useState<number | null>(null);
 	const [isPaused, setIsPaused] = useState(false);
 	const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 	const [bidAmount, setBidAmount] = useState<number>(0);
@@ -58,13 +61,27 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 	const [isSubmittingBid, setIsSubmittingBid] = useState(false);
 	const [sidebarWidth, setSidebarWidth] = useState<number>(600); // Default width in pixels
 	const [isResizing, setIsResizing] = useState(false);
-	const wsRef = useRef<WebSocket | null>(null);
+	const [showNextTeamPreview, setShowNextTeamPreview] = useState(false);
+	const [wsStatus, setWsStatus] = useState<ConnectionStatus>("connecting");
+	const wsConnectionRef = useRef<ReturnType<typeof connectWs> | null>(null);
 	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
-	const pausedTimeRef = useRef<number | null>(null);
+	const refreshCountdownRef = useRef<NodeJS.Timeout | null>(null);
 	const resizeStartXRef = useRef<number>(0);
 	const resizeStartWidthRef = useRef<number>(0);
 
 	const currentLot = state.currentLot;
+	
+	// Find next pending team (only used when showNextTeamPreview is true)
+	const nextPendingLot = useMemo(() => {
+		if (!showNextTeamPreview) return null;
+		return state.lots.find((l) => l.status === "pending") ?? null;
+	}, [state.lots, showNextTeamPreview]);
+	
+	// Check if all teams are sold (all lots have status "sold")
+	const allTeamsSold = useMemo(() => {
+		return state.lots.length > 0 && state.lots.every((lot) => lot.status === "sold");
+	}, [state.lots]);
+	
 	const highBidder = currentLot?.highBidderId
 		? state.players.find((p) => p.id === currentLot.highBidderId)?.name ?? "Unknown"
 		: null;
@@ -74,29 +91,53 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 		setBidAmount(0);
 		setBidInputValue("");
 		setSelectedPlayerId(null);
+		// Reset pause state when lot changes
+		setIsPaused(false);
 	}, [currentLot?.id]);
 
-	// Timer calculation
+	// Sync pause state from currentLot
 	useEffect(() => {
+		if (currentLot) {
+			setIsPaused(currentLot.pausedAt !== null);
+		} else {
+			setIsPaused(false);
+		}
+	}, [currentLot?.pausedAt]);
+
+	// Timer calculation with pause support
+	useEffect(() => {
+		// Clear any existing interval first to prevent overlapping
+		if (timerIntervalRef.current) {
+			clearInterval(timerIntervalRef.current);
+			timerIntervalRef.current = null;
+		}
+
 		if (!currentLot?.closesAt || currentLot.status !== "open") {
 			setTimeRemaining(null);
 			return;
 		}
 
 		const updateTimer = () => {
-			if (isPaused && pausedTimeRef.current) {
-				setTimeRemaining(pausedTimeRef.current);
+			if (!currentLot.closesAt) {
+				setTimeRemaining(null);
 				return;
 			}
 
-			const closesAt = new Date(currentLot.closesAt!).getTime();
+			// If paused, calculate remaining time from when it was paused
+			if (currentLot.pausedAt) {
+				const pausedAt = new Date(currentLot.pausedAt).getTime();
+				const closesAt = new Date(currentLot.closesAt).getTime();
+				// Time remaining = closesAt - pausedAt (frozen at pause time)
+				const remaining = Math.max(0, Math.floor((closesAt - pausedAt) / 1000));
+				setTimeRemaining(remaining);
+				return;
+			}
+
+			// Not paused: calculate normally
+			const closesAt = new Date(currentLot.closesAt).getTime();
 			const now = Date.now();
 			const remaining = Math.max(0, Math.floor((closesAt - now) / 1000));
 			setTimeRemaining(remaining);
-			
-			if (!isPaused) {
-				pausedTimeRef.current = remaining;
-			}
 		};
 
 		updateTimer();
@@ -105,14 +146,17 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 		return () => {
 			if (timerIntervalRef.current) {
 				clearInterval(timerIntervalRef.current);
+				timerIntervalRef.current = null;
 			}
 		};
-	}, [currentLot?.closesAt, currentLot?.status, isPaused]);
+	}, [currentLot?.closesAt, currentLot?.status, currentLot?.pausedAt]);
 
-	// WebSocket connection
+	// WebSocket connection with reconnection
 	useEffect(() => {
 		fetch("/api/ws").finally(() => {
-			wsRef.current = connectWs(eventId, (msg: Message) => {
+			wsConnectionRef.current = connectWs(
+				eventId,
+				(msg: Message) => {
 				if (msg.type === "bid_placed") {
 					const payload = msg.payload as any;
 					setState((prev) => {
@@ -202,13 +246,67 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 							? prev.recentBids.filter((b) => b.lotId === nextLot.id)
 							: [];
 						
-						return {
+						// Check if there's a pending lot that's not the current lot
+						const nextPending = updatedLots.find((l) => l.status === "pending" && l.id !== nextLot?.id);
+						
+						// If next lot is pending, keep currentLot as the sold lot until countdown finishes
+						// Otherwise, set currentLot to nextLot immediately
+						const shouldWaitForCountdown = nextLot?.status === "pending" && nextPending;
+						
+						const updatedState = {
 							...prev,
 							lots: updatedLots,
-							currentLot: nextLot,
+							// Keep showing sold lot if we're waiting for countdown, otherwise show next lot
+							currentLot: shouldWaitForCountdown ? prev.currentLot : nextLot,
 							recentBids: clearedBids,
 							soldLots: updatedSoldLots,
 						};
+						
+						// Start countdown if next lot is pending (not automatically opened)
+						if (shouldWaitForCountdown) {
+							// Clear any existing countdown
+							if (refreshCountdownRef.current) {
+								clearInterval(refreshCountdownRef.current);
+							}
+							
+							// Hide preview until countdown finishes
+							setShowNextTeamPreview(false);
+							
+							// Start 30-second countdown
+							setRefreshCountdown(30);
+							refreshCountdownRef.current = setInterval(() => {
+								setRefreshCountdown((prev) => {
+									if (prev === null || prev <= 1) {
+										if (refreshCountdownRef.current) {
+											clearInterval(refreshCountdownRef.current);
+											refreshCountdownRef.current = null;
+										}
+										// Update currentLot to next pending lot and show preview when countdown finishes
+										setState((prevState) => {
+											const nextPendingLot = prevState.lots.find((l) => l.status === "pending");
+											return {
+												...prevState,
+												currentLot: nextPendingLot ?? null,
+											};
+										});
+										setShowNextTeamPreview(true);
+										return null;
+									}
+									return prev - 1;
+								});
+							}, 1000);
+						} else {
+							// Clear countdown if next lot is already open
+							if (refreshCountdownRef.current) {
+								clearInterval(refreshCountdownRef.current);
+								refreshCountdownRef.current = null;
+							}
+							setRefreshCountdown(null);
+							// Don't show preview if next lot is already open
+							setShowNextTeamPreview(false);
+						}
+						
+						return updatedState;
 					});
 				}
 				if (msg.type === "lot_opened") {
@@ -222,6 +320,8 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 										closesAt: payload.closesAt ?? l.closesAt,
 										openedAt: new Date().toISOString(),
 										acceptedBidderId: null, // Clear accepted bidder when opening
+										pausedAt: null, // Reset pause state when opening new lot
+										pauseDurationSeconds: 0,
 									}
 								: l,
 						);
@@ -234,6 +334,16 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 							recentBids: [],
 						};
 					});
+					
+					// Clear countdown when a lot is opened
+					if (refreshCountdownRef.current) {
+						clearInterval(refreshCountdownRef.current);
+						refreshCountdownRef.current = null;
+					}
+					setRefreshCountdown(null);
+					
+					// Hide next team preview when a new lot is opened
+					setShowNextTeamPreview(false);
 				}
 				if (msg.type === "bid_accepted") {
 					const payload = msg.payload as any;
@@ -278,11 +388,44 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 						})
 						.catch((err) => console.error("Failed to refetch state after undo:", err));
 				}
+				if (msg.type === "timer_paused" || msg.type === "timer_resumed") {
+					const payload = msg.payload as any;
+					setState((prev) => {
+						const updatedLots = prev.lots.map((l) =>
+							l.id === payload.lotId
+								? {
+										...l,
+										pausedAt: payload.pausedAt,
+										closesAt: payload.closesAt ?? l.closesAt,
+										pauseDurationSeconds: payload.pauseDurationSeconds ?? l.pauseDurationSeconds,
+									}
+								: l,
+						);
+						const updatedCurrentLot =
+							prev.currentLot && prev.currentLot.id === payload.lotId
+								? {
+										...prev.currentLot,
+										pausedAt: payload.pausedAt,
+										closesAt: payload.closesAt ?? prev.currentLot.closesAt,
+										pauseDurationSeconds: payload.pauseDurationSeconds ?? prev.currentLot.pauseDurationSeconds,
+									}
+								: prev.currentLot;
+						return {
+							...prev,
+							lots: updatedLots,
+							currentLot: updatedCurrentLot,
+						};
+					});
+				}
 			});
 		});
 
 		return () => {
-			wsRef.current?.close();
+			wsConnectionRef.current?.close();
+			if (refreshCountdownRef.current) {
+				clearInterval(refreshCountdownRef.current);
+				refreshCountdownRef.current = null;
+			}
 		};
 	}, [eventId]);
 
@@ -391,17 +534,51 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 		}
 	};
 
-	const handlePauseToggle = () => {
-		if (isPaused) {
-			// Resume: adjust closesAt by adding the paused duration
-			if (currentLot?.closesAt && pausedTimeRef.current) {
-				const pausedDuration = pausedTimeRef.current - timeRemaining!;
-				const newClosesAt = new Date(Date.now() + pausedDuration * 1000);
-				// Note: This would require an API endpoint to update closesAt
-				// For now, we'll just toggle the UI state
+	const handlePauseToggle = async () => {
+		if (!currentLot || currentLot.status !== "open") return;
+
+		try {
+			const res = await fetch(`/api/lots/${currentLot.id}/pause`, {
+				method: "POST",
+			});
+
+			if (!res.ok) {
+				const error = await res.json().catch(() => ({}));
+				alert(error.error || "Failed to pause/resume timer");
+				return;
 			}
+
+			// State will be updated via WebSocket broadcast
+			// No need to manually update here
+		} catch (err) {
+			console.error("Error toggling pause:", err);
+			alert("Failed to pause/resume timer");
 		}
-		setIsPaused(!isPaused);
+	};
+
+	const handleDownloadRecap = async () => {
+		try {
+			const res = await fetch(`/api/events/${eventId}/recap`);
+			if (!res.ok) {
+				const error = await res.json().catch(() => ({}));
+				alert(error.error || "Failed to download recap");
+				return;
+			}
+
+			// Get the CSV content as blob
+			const blob = await res.blob();
+			const url = window.URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = `recap-${eventId}-${new Date().toISOString().split("T")[0]}.csv`;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			window.URL.revokeObjectURL(url);
+		} catch (err) {
+			console.error("Error downloading recap:", err);
+			alert("Failed to download recap CSV");
+		}
 	};
 
 	const formatTime = (seconds: number | null) => {
@@ -426,6 +603,40 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 				fontFamily: "system-ui, -apple-system, sans-serif",
 			}}
 		>
+			{/* WebSocket Reconnection Banner */}
+			{(wsStatus === "reconnecting" || wsStatus === "disconnected") && (
+				<div
+					style={{
+						padding: "12px 24px",
+						backgroundColor: wsStatus === "reconnecting" ? "#f59e0b" : "#ef4444",
+						color: "#000",
+						textAlign: "center",
+						fontSize: "14px",
+						fontWeight: 600,
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "center",
+						gap: "8px",
+					}}
+				>
+					<svg
+						width="16"
+						height="16"
+						viewBox="0 0 16 16"
+						fill="none"
+						xmlns="http://www.w3.org/2000/svg"
+					>
+						<path
+							d="M8 4v4m0 4h.01M15 8a7 7 0 11-14 0 7 7 0 0114 0z"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						/>
+					</svg>
+					{wsStatus === "reconnecting" ? "Reconnecting..." : "Disconnected"}
+				</div>
+			)}
 			<AuctionTimeline currentStep="auction" eventId={eventId} />
 			<div
 				style={{
@@ -451,7 +662,7 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 					<h1 style={{ margin: 0, fontSize: "24px", fontWeight: 600, color: "#f5f5f5" }}>
 						{state.event.name}
 					</h1>
-					<div style={{ marginTop: "8px", fontSize: "14px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "12px" }}>
+					<div style={{ marginTop: "8px", fontSize: "14px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
 						<span>Host Dashboard</span>
 						<a
 							href={`/audience/${eventId}`}
@@ -496,6 +707,53 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 							</svg>
 						</a>
 					</div>
+					{/* Only show download button when all teams are sold */}
+					{allTeamsSold && (
+						<div style={{ marginTop: "16px" }}>
+							<button
+								onClick={handleDownloadRecap}
+								style={{
+									padding: "8px 16px",
+									backgroundColor: "#2563eb",
+									color: "#fff",
+									border: "none",
+									borderRadius: "6px",
+									fontSize: "13px",
+									fontWeight: 600,
+									cursor: "pointer",
+									display: "flex",
+									alignItems: "center",
+									gap: "8px",
+									transition: "background-color 0.2s",
+									width: "100%",
+								}}
+								onMouseOver={(e) => {
+									e.currentTarget.style.backgroundColor = "#1d4ed8";
+								}}
+								onMouseOut={(e) => {
+									e.currentTarget.style.backgroundColor = "#2563eb";
+								}}
+								title="Download full ledger recap CSV with player spending, teams won, ante paid, and net amounts owed"
+							>
+								<svg
+									width="16"
+									height="16"
+									viewBox="0 0 16 16"
+									fill="none"
+									xmlns="http://www.w3.org/2000/svg"
+								>
+									<path
+										d="M8 10L5 7h2V3h2v4h2L8 10zM3 12h10v2H3v-2z"
+										fill="currentColor"
+									/>
+								</svg>
+								Download Recap CSV
+							</button>
+							<div style={{ marginTop: "6px", fontSize: "11px", color: "#666", lineHeight: 1.4 }}>
+								Full ledger recap: player spending, teams won, ante paid, net amounts
+							</div>
+						</div>
+					)}
 				</div>
 
 				<div style={{ padding: "32px", flex: 1, display: "flex", flexDirection: "column", gap: "32px", overflowY: "auto" }}>
@@ -532,20 +790,51 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 					{/* Timer */}
 					<div>
 						<div style={{ fontSize: "12px", color: "#888", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-							Time Remaining
+							{refreshCountdown !== null ? "Next Team In" : "Time Remaining"}
 						</div>
 						<div
 							style={{
 								fontSize: "64px",
 								fontWeight: 700,
-								color: timeRemaining !== null && timeRemaining < 10 ? "#ef4444" : "#60a5fa",
+								color: refreshCountdown !== null 
+									? "#4ade80" 
+									: timeRemaining !== null && timeRemaining < 10 
+										? "#ef4444" 
+										: "#60a5fa",
 								lineHeight: 1,
 								fontVariantNumeric: "tabular-nums",
 							}}
 						>
-							{formatTime(timeRemaining)}
+							{refreshCountdown !== null ? `${refreshCountdown}s` : formatTime(timeRemaining)}
 						</div>
 					</div>
+
+					{/* Up Next Preview - Only show after countdown finishes, hide when lot is open */}
+					{showNextTeamPreview && nextPendingLot && currentLot?.status !== "open" && refreshCountdown === null && (
+						<div
+							style={{
+								padding: "16px",
+								backgroundColor: "#1a1a1a",
+								borderRadius: "8px",
+								border: "1px solid #333",
+								borderLeft: "3px solid #4ade80",
+							}}
+						>
+							<div style={{ fontSize: "11px", color: "#888", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+								Up Next
+							</div>
+							<div style={{ fontSize: "18px", fontWeight: 600, color: "#fff", lineHeight: 1.2 }}>
+								{nextPendingLot.team.seed
+									? `${nextPendingLot.team.name} (${nextPendingLot.team.region} #${nextPendingLot.team.seed})`
+									: nextPendingLot.team.name}
+							</div>
+							{nextPendingLot.team.bracket && (
+								<div style={{ marginTop: "4px", fontSize: "12px", color: "#aaa" }}>
+									{nextPendingLot.team.bracket}
+								</div>
+							)}
+						</div>
+					)}
 
 					{/* Players List */}
 					<div>
@@ -1211,31 +1500,70 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 								</div>
 							</div>
 						) : (
-							state.recentBids.map((bid) => {
+							state.recentBids.map((bid, index) => {
 								const isCurrentLot = bid.lotId === currentLot?.id;
+								// Most recent bid (index 0) - green
+								// Second most recent (index 1) - red
+								// All others (index 2+) - grey
+								const isMostRecent = index === 0;
+								const isSecondMostRecent = index === 1;
+								const isHistorical = index >= 2;
+								
+								let backgroundColor = "#1a1a1a";
+								let borderColor = "#2a2a2a";
+								let borderWidth = "1px";
+								let boxShadow = "none";
+								let amountColor = "#4ade80";
+								let playerNameColor = "#fff";
+								let teamNameColor = "#888";
+								let opacity = 1;
+								
+								if (isMostRecent) {
+									backgroundColor = "#1a2e1a";
+									borderColor = "#4ade80";
+									borderWidth = "2px";
+									boxShadow = "0 4px 12px rgba(74, 222, 128, 0.15)";
+									amountColor = "#4ade80";
+								} else if (isSecondMostRecent) {
+									backgroundColor = "#2e1a1a";
+									borderColor = "#ef4444";
+									borderWidth = "2px";
+									boxShadow = "0 4px 12px rgba(239, 68, 68, 0.15)";
+									amountColor = "#ef4444";
+								} else if (isHistorical) {
+									backgroundColor = "#1a1a1a";
+									borderColor = "#2a2a2a";
+									borderWidth = "1px";
+									opacity = 0.5;
+									amountColor = "#666";
+									playerNameColor = "#666";
+									teamNameColor = "#555";
+								}
+								
 								return (
 									<div
 										key={bid.id}
 										style={{
 											padding: "16px",
-											backgroundColor: isCurrentLot ? "#1a2e1a" : "#1a1a1a",
+											backgroundColor,
 											borderRadius: "12px",
-											border: isCurrentLot ? "2px solid #4ade80" : "1px solid #2a2a2a",
+											border: `${borderWidth} solid ${borderColor}`,
 											transition: "all 0.2s",
-											boxShadow: isCurrentLot ? "0 4px 12px rgba(74, 222, 128, 0.15)" : "none",
+											boxShadow,
+											opacity,
 										}}
 									>
 										<div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
 											<div style={{ flex: 1 }}>
-												<div style={{ fontSize: "16px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>
+												<div style={{ fontSize: "16px", fontWeight: 600, color: playerNameColor, marginBottom: "4px" }}>
 													{bid.playerName}
 												</div>
-												<div style={{ fontSize: "12px", color: "#888" }}>
+												<div style={{ fontSize: "12px", color: teamNameColor }}>
 													{bid.teamName}
 												</div>
 											</div>
 											<div style={{ textAlign: "right", marginLeft: "12px" }}>
-												<div style={{ fontSize: "20px", fontWeight: 700, color: "#4ade80", lineHeight: 1.2 }}>
+												<div style={{ fontSize: "20px", fontWeight: 700, color: amountColor, lineHeight: 1.2 }}>
 													${(bid.amountCents / 100).toFixed(2)}
 												</div>
 												<div style={{ fontSize: "11px", color: "#666", marginTop: "2px" }}>

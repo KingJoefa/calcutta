@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { connectWs, type Message } from "../client/wsClient";
+import { connectWs, type Message, type ConnectionStatus } from "../client/wsClient";
 import { AuctionTimeline } from "./AuctionTimeline";
 
 type Team = { id: string; name: string; seed?: number | null; region?: string | null; bracket?: string | null };
@@ -13,6 +13,8 @@ type Lot = {
 	highBidderId: string | null;
 	openedAt: string | null;
 	closesAt: string | null;
+	pausedAt: string | null;
+	pauseDurationSeconds: number;
 	team: Team;
 };
 
@@ -32,7 +34,8 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [bidAnimation, setBidAnimation] = useState<{ playerName: string; amountCents: number } | null>(null);
 	const [previousBidAmount, setPreviousBidAmount] = useState<number>(initialState.currentLot?.currentBidCents ?? 0);
-	const wsRef = useRef<WebSocket | null>(null);
+	const [wsStatus, setWsStatus] = useState<ConnectionStatus>("connecting");
+	const wsConnectionRef = useRef<ReturnType<typeof connectWs> | null>(null);
 	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 	const refreshCountdownRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -85,15 +88,37 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 		},
 	};
 
-	// Timer calculation
+	// Timer calculation with pause support
 	useEffect(() => {
+		// Clear any existing interval first to prevent overlapping
+		if (timerIntervalRef.current) {
+			clearInterval(timerIntervalRef.current);
+			timerIntervalRef.current = null;
+		}
+
 		if (!currentLot?.closesAt || currentLot.status !== "open") {
 			setTimeRemaining(null);
 			return;
 		}
 
 		const updateTimer = () => {
-			const closesAt = new Date(currentLot.closesAt!).getTime();
+			if (!currentLot.closesAt) {
+				setTimeRemaining(null);
+				return;
+			}
+
+			// If paused, calculate remaining time from when it was paused
+			if (currentLot.pausedAt) {
+				const pausedAt = new Date(currentLot.pausedAt).getTime();
+				const closesAt = new Date(currentLot.closesAt).getTime();
+				// Time remaining = closesAt - pausedAt (frozen at pause time)
+				const remaining = Math.max(0, Math.floor((closesAt - pausedAt) / 1000));
+				setTimeRemaining(remaining);
+				return;
+			}
+
+			// Not paused: calculate normally
+			const closesAt = new Date(currentLot.closesAt).getTime();
 			const now = Date.now();
 			const remaining = Math.max(0, Math.floor((closesAt - now) / 1000));
 			setTimeRemaining(remaining);
@@ -105,14 +130,17 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 		return () => {
 			if (timerIntervalRef.current) {
 				clearInterval(timerIntervalRef.current);
+				timerIntervalRef.current = null;
 			}
 		};
-	}, [currentLot?.closesAt, currentLot?.status]);
+	}, [currentLot?.closesAt, currentLot?.status, currentLot?.pausedAt]);
 
-	// WebSocket connection
+	// WebSocket connection with reconnection
 	useEffect(() => {
 		fetch("/api/ws").finally(() => {
-			wsRef.current = connectWs(eventId, (msg: Message) => {
+			wsConnectionRef.current = connectWs(
+				eventId,
+				(msg: Message) => {
 				if (msg.type === "bid_placed") {
 					const payload = msg.payload as any;
 					setState((prev) => {
@@ -190,19 +218,46 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 					// This handles both the current lot opening and the next team being opened
 					refetchState();
 				}
-			});
-		});
+				if (msg.type === "timer_paused" || msg.type === "timer_resumed") {
+					const payload = msg.payload as any;
+					setState((prev) => {
+						if (!prev.currentLot || prev.currentLot.id !== payload.lotId) {
+							return prev;
+						}
+						return {
+							...prev,
+							currentLot: {
+								...prev.currentLot,
+								pausedAt: payload.pausedAt,
+								closesAt: payload.closesAt ?? prev.currentLot.closesAt,
+								pauseDurationSeconds: payload.pauseDurationSeconds ?? prev.currentLot.pauseDurationSeconds,
+							},
+						};
+					});
+				}
+				},
+				(status: ConnectionStatus) => {
+					setWsStatus(status);
+				},
+			);
 
-		return () => {
-			wsRef.current?.close();
-			if (refreshCountdownRef.current) {
-				clearInterval(refreshCountdownRef.current);
-			}
-		};
+			return () => {
+				wsConnectionRef.current?.close();
+				if (refreshCountdownRef.current) {
+					clearInterval(refreshCountdownRef.current);
+				}
+			};
+		});
 	}, [eventId]);
 
 	const handleBid = async () => {
 		if (!currentLot || !selectedPlayerId || !bidAmount) return;
+		
+		// Prevent participants from bidding when timer is at 0
+		if (timeRemaining === 0) {
+			alert("Bidding is closed. Only the host can place bids when the timer reaches 0.");
+			return;
+		}
 		
 		const amountCents = Math.round(parseFloat(bidAmount) * 100);
 		if (amountCents < minBid * 100) {
@@ -471,79 +526,112 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 								margin: "0 auto",
 							}}
 						>
-							<select
-								value={selectedPlayerId}
-								onChange={(e) => setSelectedPlayerId(e.target.value)}
-								aria-label="Select your name"
-								style={{
-									padding: "16px",
-									fontSize: "clamp(16px, 4vw, 20px)",
-									borderRadius: "8px",
-									border: "2px solid #d1d5db",
-									backgroundColor: "#fff",
-									color: "#1a1a1a",
-								}}
-							>
-								<option value="">Select your name</option>
-								{state.players.map((p) => (
-									<option key={p.id} value={p.id}>
-										{p.name}
-									</option>
-								))}
-							</select>
-							<div style={{ display: "flex", gap: "12px" }}>
-								<input
-									type="number"
-									value={bidAmount}
-									onChange={(e) => setBidAmount(e.target.value)}
-									placeholder={`Min: $${minBid.toFixed(2)}`}
-									min={minBid}
-									step="0.01"
-									aria-label="Bid amount in dollars"
-									aria-describedby="min-bid-hint"
+							{timeRemaining === 0 ? (
+								<div
 									style={{
-										flex: 1,
 										padding: "16px",
-										fontSize: "clamp(16px, 4vw, 20px)",
+										backgroundColor: "#fef2f2",
+										border: "2px solid #dc2626",
 										borderRadius: "8px",
-										border: "2px solid #d1d5db",
-										backgroundColor: "#fff",
+										textAlign: "center",
 									}}
-								/>
-								<button
-									onClick={handleBid}
-									disabled={!selectedPlayerId || !bidAmount || isSubmitting}
-									style={{
-										padding: "16px 32px",
-										fontSize: "clamp(16px, 4vw, 20px)",
-										...(selectedPlayerId && bidAmount ? { ...button.base, ...button.primary } : { ...button.base, ...button.disabled }),
-									}}
-									onMouseOver={(e) => {
-										if (selectedPlayerId && bidAmount) {
-											e.currentTarget.style.backgroundColor = "#1d4ed8";
-										}
-									}}
-									onMouseOut={(e) => {
-										if (selectedPlayerId && bidAmount) {
-											e.currentTarget.style.backgroundColor = "#2563eb";
-										}
-									}}
-									aria-label="Place bid"
 								>
-									{isSubmitting ? "Submitting..." : "Bid"}
-								</button>
-							</div>
-							<div
-								style={{
-									fontSize: "clamp(12px, 2.5vw, 14px)",
-									color: "#6b7280",
-									textAlign: "center",
-								}}
-								id="min-bid-hint"
-								aria-live="polite"
-							>
-								Minimum bid: <strong>${minBid.toFixed(2)}</strong>
-							</div>
+									<div
+										style={{
+											fontSize: "clamp(14px, 3vw, 18px)",
+											color: "#dc2626",
+											fontWeight: 600,
+										}}
+									>
+										Bidding Closed
+									</div>
+									<div
+										style={{
+											fontSize: "clamp(12px, 2.5vw, 14px)",
+											color: "#991b1b",
+											marginTop: "8px",
+										}}
+									>
+										Only the host can place bids when the timer reaches 0.
+									</div>
+								</div>
+							) : (
+								<>
+									<select
+										value={selectedPlayerId}
+										onChange={(e) => setSelectedPlayerId(e.target.value)}
+										aria-label="Select your name"
+										style={{
+											padding: "16px",
+											fontSize: "clamp(16px, 4vw, 20px)",
+											borderRadius: "8px",
+											border: "2px solid #d1d5db",
+											backgroundColor: "#fff",
+											color: "#1a1a1a",
+										}}
+									>
+										<option value="">Select your name</option>
+										{state.players.map((p) => (
+											<option key={p.id} value={p.id}>
+												{p.name}
+											</option>
+										))}
+									</select>
+									<div style={{ display: "flex", gap: "12px" }}>
+										<input
+											type="number"
+											value={bidAmount}
+											onChange={(e) => setBidAmount(e.target.value)}
+											placeholder={`Min: $${minBid.toFixed(2)}`}
+											min={minBid}
+											step="1"
+											aria-label="Bid amount in dollars"
+											aria-describedby="min-bid-hint"
+											style={{
+												flex: 1,
+												padding: "16px",
+												fontSize: "clamp(16px, 4vw, 20px)",
+												borderRadius: "8px",
+												border: "2px solid #d1d5db",
+												backgroundColor: "#fff",
+											}}
+										/>
+										<button
+											onClick={handleBid}
+											disabled={!selectedPlayerId || !bidAmount || isSubmitting}
+											style={{
+												padding: "16px 32px",
+												fontSize: "clamp(16px, 4vw, 20px)",
+												...(selectedPlayerId && bidAmount ? { ...button.base, ...button.primary } : { ...button.base, ...button.disabled }),
+											}}
+											onMouseOver={(e) => {
+												if (selectedPlayerId && bidAmount) {
+													e.currentTarget.style.backgroundColor = "#1d4ed8";
+												}
+											}}
+											onMouseOut={(e) => {
+												if (selectedPlayerId && bidAmount) {
+													e.currentTarget.style.backgroundColor = "#2563eb";
+												}
+											}}
+											aria-label="Place bid"
+										>
+											{isSubmitting ? "Submitting..." : "Bid"}
+										</button>
+									</div>
+									<div
+										style={{
+											fontSize: "clamp(12px, 2.5vw, 14px)",
+											color: "#6b7280",
+											textAlign: "center",
+										}}
+										id="min-bid-hint"
+										aria-live="polite"
+									>
+										Minimum bid: <strong>${minBid.toFixed(2)}</strong>
+									</div>
+								</>
+							)}
 						</div>
 					)}
 

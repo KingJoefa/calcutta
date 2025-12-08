@@ -145,9 +145,11 @@ The app uses **additive payout percentages** based on playoff round wins:
 
 ### 8. Export Recap Data
 
-**Location**: Presenter Dashboard or API endpoint
+**Location**: Presenter Dashboard header
 
-**Method**: Navigate to `/api/events/[eventId]/recap` or use Presenter Dashboard export feature
+**Method**: Click the **"Download Recap CSV"** button in the Presenter Dashboard header (top left, below the event name). The CSV file will automatically download with a filename like `recap-[eventId]-[date].csv`.
+
+**Alternative Method**: Navigate directly to `/api/events/[eventId]/recap` in your browser to download the CSV.
 
 **CSV Export Contains**:
 - Player name and handle
@@ -271,7 +273,7 @@ Net Payout = (Winnings from teams) - (Total Spent) - (Ante)
 | Place Bid | Audience View | "Bid" button |
 | Accept Sale | Presenter Dashboard | "Accept Bid & Advance" |
 | Undo Sale | Presenter Dashboard | "Undo Last Sale" |
-| Export Recap | API/Dashboard | `/api/events/[eventId]/recap` |
+| Export Recap | Presenter Dashboard | "Download Recap CSV" button (header) |
 
 ---
 

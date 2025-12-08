@@ -121,6 +121,8 @@ A real-time Football Calcutta Style auction web application built with Next.js 1
 - **Ledger System**: Complete transaction history (ante, sale, refund, adjustment, reversal)
 - **Sale Tracking**: All sales recorded with player, amount, timestamp
 - **Recap Export**: CSV export with player spending and team allocations
+  - **UI Button**: "Download Recap CSV" button in Presenter Dashboard header
+  - **CSV Contains**: Player name, handle, teams won, total spent, ante paid, net amount owed
 
 ### ✅ Real-Time Features
 - **WebSocket Updates**: All views update in real-time

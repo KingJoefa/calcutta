@@ -9,7 +9,7 @@ export function AuctionTimeline({ currentStep, eventId }: { currentStep: Step; e
 	const router = useRouter();
 	const steps: { key: Step; label: string; path?: string }[] = [
 		{ key: "auction", label: "Auction", path: eventId ? `/presenter/${eventId}` : undefined },
-		{ key: "results", label: "Results", path: eventId ? `/host/${eventId}` : undefined },
+		{ key: "results", label: "Results", path: eventId ? `/host/${eventId}/results` : undefined },
 	];
 
 	const currentIndex = steps.findIndex((s) => s.key === currentStep);
@@ -78,7 +78,8 @@ export function AuctionTimeline({ currentStep, eventId }: { currentStep: Step; e
 			{steps.map((step, index) => {
 				const isActive = index === currentIndex;
 				const isCompleted = index < currentIndex;
-				const isClickable = step.path && (isCompleted || isActive);
+				// Always allow clicking Results when a path is available so host can jump there mid-session.
+				const isClickable = step.path && (isCompleted || isActive || step.key === "results");
 
 				return (
 					<div key={step.key} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -147,4 +148,3 @@ export function AuctionTimeline({ currentStep, eventId }: { currentStep: Step; e
 		</nav>
 	);
 }
-

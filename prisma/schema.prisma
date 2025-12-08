@@ -114,6 +114,8 @@ model Lot {
   status        LotStatus @default(pending)
   openedAt      DateTime?
   closesAt      DateTime?
+  pausedAt      DateTime? // When timer was paused (null = not paused)
+  pauseDurationSeconds Int @default(0) // Total seconds paused (accumulated)
   currentBidCents Int      @default(0)
   highBidderId  String? // playerId
   acceptedBidderId String? // playerId - set when host accepts a bid, required before selling

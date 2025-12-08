@@ -3,11 +3,13 @@
 
 import { useState } from "react";
 import { AuctionTimeline } from "../components/AuctionTimeline";
+import { TEAM_PRESETS, getPresetTeams } from "../lib/teamPresets";
 import styles from "./page.module.css";
 
 export default function Home() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [selectedPreset, setSelectedPreset] = useState<string>("");
 
 	return (
 		<div>
@@ -66,12 +68,12 @@ export default function Home() {
 							.map((line) => line.trim())
 							.filter(Boolean)
 							.map((line) => {
-								// Try to parse seed/region info: "Team Name (AFC #1)" or "Team Name (NFC #2)"
-								const seedMatch = line.match(/^(.+?)\s*\(([A-Z]+)\s*#(\d+)\)$/);
+								// Try to parse seed/region info: "Team Name (AFC #1)", "Team Name (NFC #2)", or "Team Name (Seed #1)"
+								const seedMatch = line.match(/^(.+?)\s*\(([A-Za-z\s]+)\s*#(\d+)\)$/);
 								if (seedMatch) {
 									return {
 										name: seedMatch[1].trim(),
-										region: seedMatch[2],
+										region: seedMatch[2].trim(),
 										seed: parseInt(seedMatch[3], 10),
 									};
 								}
@@ -80,7 +82,7 @@ export default function Home() {
 
 						// Convert dollars to cents for API
 						const anteDollars = Number(data.get("anteDollars") || 10);
-						const minIncrementDollars = Number(data.get("minIncrementDollars") || 1);
+						const minIncrementDollars = Number(data.get("minIncrementDollars") || 5);
 
 						const payload = {
 							name: eventName,
@@ -88,9 +90,9 @@ export default function Home() {
 							ruleSet: {
 								anteCents: Math.round(anteDollars * 100),
 								minIncrementCents: Math.round(minIncrementDollars * 100),
-								auctionTimerSeconds: Number(data.get("auctionTimerSeconds") || 30),
+								auctionTimerSeconds: Number(data.get("auctionTimerSeconds") || 45),
 								antiSnipeExtensionSeconds: Number(
-									data.get("antiSnipeExtensionSeconds") || 10,
+									data.get("antiSnipeExtensionSeconds") || 17,
 								),
 								roundAllocations: {
 									wildcard: 0.04,
@@ -158,7 +160,7 @@ export default function Home() {
 									step="0.01"
 									min="0"
 									className={styles.input}
-									placeholder="10.00"
+									placeholder="10"
 									defaultValue="10"
 								/>
 								<span className={styles.helperText}>Entry fee per player in dollars</span>
@@ -175,8 +177,8 @@ export default function Home() {
 									step="0.01"
 									min="0"
 									className={styles.input}
-									placeholder="1.00"
-									defaultValue="1"
+									placeholder="5.00"
+									defaultValue="5"
 								/>
 								<span className={styles.helperText}>Minimum bid increase in dollars</span>
 							</div>
@@ -190,8 +192,8 @@ export default function Home() {
 									name="auctionTimerSeconds"
 									type="number"
 									className={styles.input}
-									placeholder="30"
-									defaultValue="30"
+									placeholder="45"
+									defaultValue="45"
 								/>
 								<span className={styles.helperText}>Countdown duration in seconds</span>
 							</div>
@@ -205,8 +207,8 @@ export default function Home() {
 									name="antiSnipeExtensionSeconds"
 									type="number"
 									className={styles.input}
-									placeholder="10"
-									defaultValue="10"
+									placeholder="17"
+									defaultValue="17"
 								/>
 								<span className={styles.helperText}>Extension time when bid placed near end</span>
 							</div>
@@ -242,26 +244,110 @@ export default function Home() {
 								Optional: include seed/region info (e.g., "Kansas City Chiefs (AFC #1)").
 								Leave blank to import teams later.
 							</span>
+							<div style={{ marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+								<button
+									type="button"
+									onClick={() => {
+										const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
+										if (teamsTextarea) {
+											const teams = getPresetTeams("college_football");
+											teamsTextarea.value = teams.join("\n");
+											setSelectedPreset("college_football");
+										}
+									}}
+									style={{
+										padding: "6px 12px",
+										fontSize: "13px",
+										backgroundColor: selectedPreset === "college_football" ? "#4ade80" : "#f3f4f6",
+										color: selectedPreset === "college_football" ? "#000" : "#374151",
+										border: "1px solid #d1d5db",
+										borderRadius: "6px",
+										cursor: "pointer",
+										fontWeight: selectedPreset === "college_football" ? 600 : 400,
+									}}
+								>
+									🏈 College Football
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
+										if (teamsTextarea) {
+											const teams = getPresetTeams("world_cup");
+											teamsTextarea.value = teams.join("\n");
+											setSelectedPreset("world_cup");
+										}
+									}}
+									style={{
+										padding: "6px 12px",
+										fontSize: "13px",
+										backgroundColor: selectedPreset === "world_cup" ? "#4ade80" : "#f3f4f6",
+										color: selectedPreset === "world_cup" ? "#000" : "#374151",
+										border: "1px solid #d1d5db",
+										borderRadius: "6px",
+										cursor: "pointer",
+										fontWeight: selectedPreset === "world_cup" ? 600 : 400,
+									}}
+								>
+									⚽ World Cup
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
+										if (teamsTextarea) {
+											const teams = getPresetTeams("football_playoffs");
+											teamsTextarea.value = teams.join("\n");
+											setSelectedPreset("football_playoffs");
+										}
+									}}
+									style={{
+										padding: "6px 12px",
+										fontSize: "13px",
+										backgroundColor: selectedPreset === "football_playoffs" ? "#4ade80" : "#f3f4f6",
+										color: selectedPreset === "football_playoffs" ? "#000" : "#374151",
+										border: "1px solid #d1d5db",
+										borderRadius: "6px",
+										cursor: "pointer",
+										fontWeight: selectedPreset === "football_playoffs" ? 600 : 400,
+									}}
+								>
+									🏈 Football Playoffs
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
+										if (teamsTextarea) {
+											teamsTextarea.value = "";
+											setSelectedPreset("");
+										}
+									}}
+									style={{
+										padding: "6px 12px",
+										fontSize: "13px",
+										backgroundColor: "#f3f4f6",
+										color: "#374151",
+										border: "1px solid #d1d5db",
+										borderRadius: "6px",
+										cursor: "pointer",
+									}}
+								>
+									Clear
+								</button>
+							</div>
 							<textarea
 								id="teams"
 								name="teams"
 								className={styles.textarea}
 								rows={8}
 								placeholder="Kansas City Chiefs (AFC #1)&#10;Buffalo Bills (AFC #2)&#10;Baltimore Ravens (AFC #3)&#10;..."
-								defaultValue={`Kansas City Chiefs (AFC #1)
-Buffalo Bills (AFC #2)
-Baltimore Ravens (AFC #3)
-Houston Texans (AFC #4)
-Los Angeles Chargers (AFC #5)
-Pittsburgh Steelers (AFC #6)
-Denver Broncos (AFC #7)
-Detroit Lions (NFC #1)
-Philadelphia Eagles (NFC #2)
-Tampa Bay Buccaneers (NFC #3)
-Los Angeles Rams (NFC #4)
-Minnesota Vikings (NFC #5)
-Washington Commanders (NFC #6)
-Green Bay Packers (NFC #7)`}
+								onChange={() => {
+									// Clear preset selection when user manually edits
+									if (selectedPreset) {
+										setSelectedPreset("");
+									}
+								}}
 							/>
 						</div>
 					</div>

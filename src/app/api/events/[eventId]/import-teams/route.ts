@@ -25,44 +25,50 @@ export async function POST(
 			return NextResponse.json({ error: "Event not found" }, { status: 404 });
 		}
 
-		// Create teams
-		await prisma.team.createMany({
-			data: teams.map((t) => ({
-				eventId,
-				name: t.name,
-				seed: t.seed ?? null,
-				region: t.region ?? null,
-				bracket: t.bracket ?? null,
-			})),
-			skipDuplicates: true,
-		});
-
-		// Get all teams for this event and randomize into lots
-		const allTeams = await prisma.team.findMany({
+		// Check if lots already exist (declare outside block scope)
+		const existingLots = await prisma.lot.findMany({
 			where: { eventId },
 		});
 
-		if (allTeams.length > 0) {
-			// Check if lots already exist
-			const existingLots = await prisma.lot.findMany({
-				where: { eventId },
+		const wasRandomized = existingLots.length === 0;
+
+		// Create teams and randomize into lots in a transaction
+		await prisma.$transaction(async (tx) => {
+			// Create teams
+			await tx.team.createMany({
+				data: teams.map((t) => ({
+					eventId,
+					name: t.name,
+					seed: t.seed ?? null,
+					region: t.region ?? null,
+					bracket: t.bracket ?? null,
+				})),
+				skipDuplicates: true,
 			});
 
-			if (existingLots.length === 0) {
-				// Randomize teams into lots
-				const shuffled = shuffleDeterministic(allTeams, event.rngSeed);
-				await prisma.lot.createMany({
-					data: shuffled.map((t, idx) => ({
-						eventId,
-						teamId: t.id,
-						orderIndex: idx,
-						status: "pending",
-					})),
+			// Only randomize if lots don't exist yet
+			if (wasRandomized) {
+				// Get all teams for this event (including newly created ones)
+				const allTeams = await tx.team.findMany({
+					where: { eventId },
 				});
-			}
-		}
 
-		return NextResponse.json({ ok: true, randomized: existingLots.length === 0 });
+				if (allTeams.length > 0) {
+					// Randomize teams into lots
+					const shuffled = shuffleDeterministic(allTeams, event.rngSeed);
+					await tx.lot.createMany({
+						data: shuffled.map((t, idx) => ({
+							eventId,
+							teamId: t.id,
+							orderIndex: idx,
+							status: "pending",
+						})),
+					});
+				}
+			}
+		});
+
+		return NextResponse.json({ ok: true, randomized: wasRandomized });
 	} catch (err) {
 		console.error(err);
 		return NextResponse.json({ error: "Internal error" }, { status: 500 });

@@ -10,7 +10,7 @@ export async function GET(
 ) {
 	try {
 		const { eventId } = await params;
-		const [players, sales, ledger] = await Promise.all([
+		const [players, sales, ledger, bids] = await Promise.all([
 			prisma.player.findMany({ where: { eventId } }),
 			prisma.sale.findMany({
 				where: { eventId },
@@ -18,6 +18,14 @@ export async function GET(
 				orderBy: { finalizedAt: "asc" },
 			}),
 			prisma.ledgerEntry.findMany({ where: { eventId } }),
+			prisma.bid.findMany({
+				where: { eventId },
+				include: { 
+					player: true,
+					lot: { include: { team: true } }
+				},
+				orderBy: { createdAt: "asc" },
+			}),
 		]);
 
 		const purchasesByPlayer: Record<string, number> = {};
@@ -39,16 +47,60 @@ export async function GET(
 			}
 		}
 
-		const records = players.map((p) => ({
-			Player: p.name,
-			Handle: p.handle ?? "",
-			"Football Teams": teamsWonByPlayer[p.id].join("; "),
-			SpentCents: purchasesByPlayer[p.id],
-			AnteCents: anteByPlayer[p.id],
-			NetOwedCents: purchasesByPlayer[p.id] + anteByPlayer[p.id],
-		}));
+		const summaryRecords = players.map((p) => {
+			const totalSpent = purchasesByPlayer[p.id] / 100;
+			const antePaid = anteByPlayer[p.id] / 100;
+			const netOwed = totalSpent + antePaid;
+			return {
+				Player: p.name,
+				Handle: p.handle ?? "",
+				"Teams Won": teamsWonByPlayer[p.id].join("; "),
+				"Total Spent": totalSpent.toFixed(2),
+				"Ante Paid": antePaid.toFixed(2),
+				"Net Amount Owed": netOwed.toFixed(2),
+			};
+		});
 
-		const csv = stringify(records, { header: true });
+		// Create a map of winning bid IDs
+		// A winning bid is the final bid that resulted in a sale
+		// For each sale, find the last bid that matches the sale criteria (lot, player, amount)
+		const winningBidIds = new Set<string>();
+		for (const sale of sales) {
+			// Find all bids for this lot that match the sale amount and player
+			const matchingBids = bids
+				.filter(bid => 
+					bid.lotId === sale.lotId && 
+					bid.amountCents === sale.amountCents && 
+					bid.playerId === sale.playerId
+				)
+				.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()); // Most recent first
+			
+			// The winning bid is the most recent bid that matches (should be the last one before sale)
+			if (matchingBids.length > 0) {
+				winningBidIds.add(matchingBids[0].id);
+			}
+		}
+
+		// Create bid ledger records
+		const bidRecords = bids.map((bid) => {
+			const isWinningBid = winningBidIds.has(bid.id);
+			return {
+				Time: bid.createdAt.toISOString(),
+				Player: bid.player.name,
+				Team: bid.lot.team.name,
+				Amount: (bid.amountCents / 100).toFixed(2),
+				"✓": isWinningBid ? "✓" : "",
+			};
+		});
+
+		// Combine summary and bid ledger with separator
+		const summaryCsv = stringify(summaryRecords, { header: true });
+		const bidLedgerCsv = stringify(bidRecords, { header: true });
+		
+		// Combine with empty rows for visual separation
+		// The bid ledger has its own header row, so it will be clear where it starts
+		const csv = summaryCsv + "\n\n" + bidLedgerCsv;
+		
 		return new NextResponse(csv, {
 			headers: {
 				"content-type": "text/csv",
