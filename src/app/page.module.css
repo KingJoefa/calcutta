@@ -212,6 +212,19 @@
   gap: 14px;
 }
 
+.counterRow {
+  font-size: 13px;
+  color: #cbd5e1;
+  margin: 4px 0 8px;
+  font-weight: 700;
+}
+
+.helperInline {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
 .advancedToggle {
   margin-top: 6px;
   background: transparent;
@@ -284,11 +297,11 @@
 }
 
 .presetButton {
-  padding: 8px 12px;
+  padding: 7px 11px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: #e5e7eb;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: #cbd5e1;
   cursor: pointer;
   font-weight: 700;
   transition: transform 120ms ease, border 120ms ease, background 120ms ease;
@@ -348,7 +361,8 @@
   padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
-  justify-content: flex-start;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .button {
@@ -372,6 +386,27 @@
 .button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.trustLine,
+.previewLine,
+.disableReason {
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.disableReason {
+  color: #fca5a5;
+}
+
+.rulesSummary {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #e5e7eb;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px 12px;
+  border-radius: 10px;
 }
 
 .panel {

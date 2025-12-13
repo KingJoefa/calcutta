@@ -11,6 +11,44 @@ export default function Home() {
 	const [error, setError] = useState<string | null>(null);
 	const [selectedPreset, setSelectedPreset] = useState<string>("");
 	const [showAdvanced, setShowAdvanced] = useState(false);
+	const [playersInput, setPlayersInput] = useState("");
+	const [teamsInput, setTeamsInput] = useState("");
+	const [playersFocused, setPlayersFocused] = useState(false);
+	const [buyIn, setBuyIn] = useState("10");
+	const [minIncrementDollars, setMinIncrementDollars] = useState("5");
+	const [auctionTimerSeconds, setAuctionTimerSeconds] = useState("45");
+	const [antiSnipeExtensionSeconds, setAntiSnipeExtensionSeconds] = useState("17");
+
+	const parseList = (raw: string) => {
+		const cleaned = raw.replace(/,/g, "\n");
+		const seen = new Set<string>();
+		const entries: string[] = [];
+		for (const line of cleaned.split(/\n/)) {
+			const trimmed = line.trim();
+			if (!trimmed) continue;
+			const key = trimmed.toLowerCase();
+			if (seen.has(key)) continue;
+			seen.add(key);
+			entries.push(trimmed);
+		}
+		return entries;
+	};
+
+	const players = parseList(playersInput);
+	const teams = parseList(teamsInput);
+
+	const isValid = players.length >= 2 && teams.length >= 4;
+	const disableReason = !isValid
+		? `Add at least ${players.length < 2 ? "2 players" : ""}${
+				players.length < 2 && teams.length < 4 ? " and " : ""
+			}${teams.length < 4 ? "4 teams" : ""}`
+		: null;
+
+	const buyInValue = Number(buyIn) || 0;
+	const potPreview = players.length > 0 ? buyInValue * players.length : null;
+
+	const formatMoney = (num: number) =>
+		`$${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 	return (
 		<div className={styles.page}>
@@ -32,10 +70,10 @@ export default function Home() {
 					<div className={styles.heroHighlight}>
 						<div className={styles.highlightTitle}>How it works</div>
 						<ul className={styles.highlightList}>
-							<li>1) Add teams and players, create the event.</li>
+							<li>1) Choose teams + players, then create the event.</li>
 							<li>2) Share private links with your squad.</li>
 							<li>3) Start bidding—host controls the order and timer.</li>
-							<li>4) Everyone sees bids update instantly.</li>
+							<li>4) Bids update instantly for everyone.</li>
 							<li>5) Export results once the auction locks.</li>
 						</ul>
 						<div className={styles.highlightBadge}>Grab your squad</div>
@@ -56,29 +94,23 @@ export default function Home() {
 							const data = new FormData(form);
 							const eventName =
 								(data.get("name") as string) || "Football Calcutta Style Demo Event";
-							const playersText = (data.get("players") as string) || "";
-							const teamsText = (data.get("teams") as string) || "";
 
 							// Parse players from textarea (one per line, optional @handle)
-							const players = playersText
-								.split("\n")
-								.map((line) => line.trim())
-								.filter(Boolean)
-								.map((line) => {
-									const match = line.match(/^(.+?)(?:\s+@(.+))?$/);
-									if (match) {
-										return {
-											name: match[1].trim(),
-											handle: match[2] ? `@${match[2].trim()}` : undefined,
-										};
-									}
-									return { name: line };
-								});
+							const playersParsed = players.map((line) => {
+								const match = line.match(/^(.+?)(?:\s+@(.+))?$/);
+								if (match) {
+									return {
+										name: match[1].trim(),
+										handle: match[2] ? `@${match[2].trim()}` : undefined,
+									};
+								}
+								return { name: line };
+							});
 
 							// Default to demo players if none provided
 							const finalPlayers =
-								players.length > 0
-									? players
+								playersParsed.length > 0
+									? playersParsed
 									: [
 											{ name: "Alice", handle: "@alice" },
 											{ name: "Bob", handle: "@bob" },
@@ -87,36 +119,32 @@ export default function Home() {
 									  ];
 
 							// Parse teams from textarea (one per line, optional seed/region info)
-							const teams = teamsText
-								.split("\n")
-								.map((line) => line.trim())
-								.filter(Boolean)
-								.map((line) => {
-									// Try to parse seed/region info: "Team Name (AFC #1)", "Team Name (NFC #2)", or "Team Name (Seed #1)"
-									const seedMatch = line.match(/^(.+?)\s*\(([A-Za-z\s]+)\s*#(\d+)\)$/);
-									if (seedMatch) {
-										return {
-											name: seedMatch[1].trim(),
-											region: seedMatch[2].trim(),
-											seed: parseInt(seedMatch[3], 10),
-										};
-									}
-									return { name: line };
-								});
+							const teamsParsed = teams.map((line) => {
+								// Try to parse seed/region info: "Team Name (AFC #1)", "Team Name (NFC #2)", or "Team Name (Seed #1)"
+								const seedMatch = line.match(/^(.+?)\s*\(([A-Za-z\s]+)\s*#(\d+)\)$/);
+								if (seedMatch) {
+									return {
+										name: seedMatch[1].trim(),
+										region: seedMatch[2].trim(),
+										seed: parseInt(seedMatch[3], 10),
+									};
+								}
+								return { name: line };
+							});
 
 							// Convert dollars to cents for API
-							const anteDollars = Number(data.get("anteDollars") || 10);
-							const minIncrementDollars = Number(data.get("minIncrementDollars") || 5);
+							const anteDollars = Number(data.get("anteDollars") || buyInValue);
+							const minIncDollars = Number(data.get("minIncrementDollars") || minIncrementDollars);
 
 							const payload = {
 								name: eventName,
 								// rngSeed is now optional - will be auto-generated by the API
 								ruleSet: {
 									anteCents: Math.round(anteDollars * 100),
-									minIncrementCents: Math.round(minIncrementDollars * 100),
-									auctionTimerSeconds: Number(data.get("auctionTimerSeconds") || 45),
+									minIncrementCents: Math.round(minIncDollars * 100),
+									auctionTimerSeconds: Number(data.get("auctionTimerSeconds") || auctionTimerSeconds),
 									antiSnipeExtensionSeconds: Number(
-										data.get("antiSnipeExtensionSeconds") || 17,
+										data.get("antiSnipeExtensionSeconds") || antiSnipeExtensionSeconds,
 									),
 									roundAllocations: {
 										wildcard: 0.04,
@@ -128,7 +156,7 @@ export default function Home() {
 									includeAnteInPot: true,
 								},
 								players: finalPlayers,
-								teams: teams.length > 0 ? teams : undefined, // Only include if teams provided
+								teams: teamsParsed.length > 0 ? teamsParsed : undefined, // Only include if teams provided
 							};
 							const response = await fetch("/api/events", {
 								method: "POST",
@@ -159,22 +187,20 @@ export default function Home() {
 					<div className={styles.sideColumn}>
 						<div className={styles.section}>
 							<div className={styles.sectionHeader}>
-								<h3 className={styles.sectionTitle}>Teams</h3>
+								<h3 className={styles.sectionTitle}>1. Teams</h3>
 								<p className={styles.sectionSubtitle}>
-									Paste your bracket or use presets; one per line (seed/region optional).
+									Paste teams (one per line). Format: Team (AFC #1).
 								</p>
 							</div>
+							<div className={styles.counterRow}>Teams: {teams.length} (min 4)</div>
 							<div className={styles.field}>
 								<div className={styles.presetRow}>
 									<button
 										type="button"
 										onClick={() => {
-											const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
-											if (teamsTextarea) {
-												const teams = getPresetTeams("college_football");
-												teamsTextarea.value = teams.join("\n");
-												setSelectedPreset("college_football");
-											}
+											const teams = getPresetTeams("college_football");
+											setTeamsInput(teams.join("\n"));
+											setSelectedPreset("college_football");
 										}}
 										className={`${styles.presetButton} ${selectedPreset === "college_football" ? styles.presetActive : ""}`}
 									>
@@ -183,12 +209,9 @@ export default function Home() {
 									<button
 										type="button"
 										onClick={() => {
-											const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
-											if (teamsTextarea) {
-												const teams = getPresetTeams("world_cup");
-												teamsTextarea.value = teams.join("\n");
-												setSelectedPreset("world_cup");
-											}
+											const teams = getPresetTeams("world_cup");
+											setTeamsInput(teams.join("\n"));
+											setSelectedPreset("world_cup");
 										}}
 										className={`${styles.presetButton} ${selectedPreset === "world_cup" ? styles.presetActive : ""}`}
 									>
@@ -197,12 +220,9 @@ export default function Home() {
 									<button
 										type="button"
 										onClick={() => {
-											const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
-											if (teamsTextarea) {
-												const teams = getPresetTeams("football_playoffs");
-												teamsTextarea.value = teams.join("\n");
-												setSelectedPreset("football_playoffs");
-											}
+											const teams = getPresetTeams("football_playoffs");
+											setTeamsInput(teams.join("\n"));
+											setSelectedPreset("football_playoffs");
 										}}
 										className={`${styles.presetButton} ${selectedPreset === "football_playoffs" ? styles.presetActive : ""}`}
 									>
@@ -211,11 +231,8 @@ export default function Home() {
 									<button
 										type="button"
 										onClick={() => {
-											const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
-											if (teamsTextarea) {
-												teamsTextarea.value = "";
-												setSelectedPreset("");
-											}
+											setTeamsInput("");
+											setSelectedPreset("");
 										}}
 										className={styles.presetButton}
 									>
@@ -228,11 +245,12 @@ export default function Home() {
 									className={styles.textarea}
 									rows={6}
 									placeholder={"Kansas City Chiefs (AFC #1)\nBuffalo Bills (AFC #2)\nBaltimore Ravens (AFC #3)"}
-									onChange={() => {
-										// Clear preset selection when user manually edits
+									value={teamsInput}
+									onInput={(e) => {
 										if (selectedPreset) {
 											setSelectedPreset("");
 										}
+										setTeamsInput(e.currentTarget.value);
 									}}
 								/>
 							</div>
@@ -240,16 +258,24 @@ export default function Home() {
 
 						<div className={styles.section}>
 							<div className={styles.sectionHeader}>
-								<h3 className={styles.sectionTitle}>Players</h3>
-								<p className={styles.sectionSubtitle}>One per line (supports @handles).</p>
+								<h3 className={styles.sectionTitle}>2. Players</h3>
+								<p className={styles.sectionSubtitle}>Paste your squad (one per line).</p>
 							</div>
+							<div className={styles.counterRow}>Players: {players.length} (min 2)</div>
 							<div className={styles.field}>
 								<textarea
 									id="players"
 									name="players"
 									className={styles.textarea}
 									placeholder={"Alice\nBob @bob\nCarol @carol\nDave"}
+									value={playersInput}
+									onInput={(e) => setPlayersInput(e.currentTarget.value)}
+									onFocus={() => setPlayersFocused(true)}
+									onBlur={() => setPlayersFocused(false)}
 								/>
+								{playersFocused && (
+									<div className={styles.helperInline}>Paste from group chat; @handle optional; duplicates removed.</div>
+								)}
 							</div>
 						</div>
 					</div>
@@ -257,7 +283,7 @@ export default function Home() {
 					<div className={styles.formCard}>
 						<div className={styles.cardHeader}>
 							<div>
-								<h2 className={styles.cardTitle}>Create New Auction Event</h2>
+								<h2 className={styles.cardTitle}>3. Rules</h2>
 								<p className={styles.cardSubtitle}>Set the rules and start inviting your squad.</p>
 							</div>
 						</div>
@@ -280,7 +306,7 @@ export default function Home() {
 
 								<div className={styles.field}>
 									<label htmlFor="anteDollars" className={styles.label}>
-										Ante
+										Buy-in (per person)
 									</label>
 									<input
 										id="anteDollars"
@@ -290,9 +316,14 @@ export default function Home() {
 										min="0"
 										className={styles.input}
 										placeholder="10"
-										defaultValue="10"
+										value={buyIn}
+										onInput={(e) => setBuyIn(e.currentTarget.value)}
 									/>
-									<span className={styles.helperText}>Entry fee per player in dollars</span>
+									<span className={styles.helperText}>
+										{potPreview !== null
+											? `Buy-ins = ${formatMoney(potPreview)} if everyone pays (bids add to pot separately)`
+											: "Add players to show buy-in total"}
+									</span>
 								</div>
 
 								<div className={styles.field}>
@@ -305,7 +336,8 @@ export default function Home() {
 										type="number"
 										className={styles.input}
 										placeholder="45"
-										defaultValue="45"
+										value={auctionTimerSeconds}
+										onInput={(e) => setAuctionTimerSeconds(e.currentTarget.value)}
 									/>
 								</div>
 
@@ -318,28 +350,30 @@ export default function Home() {
 											<input
 												id="minIncrementDollars"
 												name="minIncrementDollars"
-												type="number"
-												step="0.01"
-												min="0"
-												className={styles.input}
-												placeholder="5.00"
-												defaultValue="5"
-											/>
-										</div>
+											type="number"
+											step="0.01"
+											min="0"
+											className={styles.input}
+											placeholder="5.00"
+											value={minIncrementDollars}
+											onInput={(e) => setMinIncrementDollars(e.currentTarget.value)}
+										/>
+									</div>
 
 										<div className={styles.field}>
 											<label htmlFor="antiSnipeExtensionSeconds" className={styles.label}>
 												Anti-Snipe Extension
 											</label>
 											<input
-												id="antiSnipeExtensionSeconds"
-												name="antiSnipeExtensionSeconds"
-												type="number"
-												className={styles.input}
-												placeholder="17"
-												defaultValue="17"
-											/>
-										</div>
+											id="antiSnipeExtensionSeconds"
+											name="antiSnipeExtensionSeconds"
+											type="number"
+											className={styles.input}
+											placeholder="17"
+											value={antiSnipeExtensionSeconds}
+											onInput={(e) => setAntiSnipeExtensionSeconds(e.currentTarget.value)}
+										/>
+									</div>
 									</>
 								)}
 							</div>
@@ -352,11 +386,18 @@ export default function Home() {
 							</button>
 						</div>
 
+						<div className={styles.rulesSummary}>
+							Rules summary: Timer {auctionTimerSeconds || "—"}s • Min increment ${minIncrementDollars || "—"} • Anti-snipe {antiSnipeExtensionSeconds || "—"}s
+						</div>
+
 						{error && <div className={styles.errorBox}>{error}</div>}
 						<div className={styles.actionsBar}>
-							<button type="submit" className={styles.button} disabled={isSubmitting}>
+							<div className={styles.trustLine}>Invite links are private • Host can’t bid as others • All bids timestamped</div>
+							<div className={styles.previewLine}>Preview what bidders see after you create the event.</div>
+							<button type="submit" className={styles.button} disabled={isSubmitting || !isValid}>
 								{isSubmitting ? "Creating..." : "Create Event"}
 							</button>
+							{disableReason && <div className={styles.disableReason}>{disableReason}</div>}
 						</div>
 					</div>
 				</form>

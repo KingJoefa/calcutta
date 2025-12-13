@@ -59,19 +59,20 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 	const [bidInputValue, setBidInputValue] = useState<string>("");
 	const [showTeamImport, setShowTeamImport] = useState(initialState.lots.length === 0);
 	const [isSubmittingBid, setIsSubmittingBid] = useState(false);
-	const [sidebarWidth, setSidebarWidth] = useState<number>(600); // Default width in pixels
-	const [isResizing, setIsResizing] = useState(false);
-	const [showNextTeamPreview, setShowNextTeamPreview] = useState(false);
-	const [wsStatus, setWsStatus] = useState<ConnectionStatus>("connecting");
-	const [inviteLinks, setInviteLinks] = useState<Array<{ playerId: string; name: string; handle?: string | null; token: string }>>([]);
-	const [loadingInvites, setLoadingInvites] = useState(false);
-	const [showInviteLinks, setShowInviteLinks] = useState(false);
-	const [copiedPlayerId, setCopiedPlayerId] = useState<string | null>(null);
-	const wsConnectionRef = useRef<ReturnType<typeof connectWs> | null>(null);
-	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
-	const refreshCountdownRef = useRef<NodeJS.Timeout | null>(null);
-	const resizeStartXRef = useRef<number>(0);
-	const resizeStartWidthRef = useRef<number>(0);
+const [sidebarWidth, setSidebarWidth] = useState<number>(600); // Default width in pixels
+const [isResizing, setIsResizing] = useState(false);
+const [showNextTeamPreview, setShowNextTeamPreview] = useState(false);
+const [wsStatus, setWsStatus] = useState<ConnectionStatus>("connecting");
+const [inviteLinks, setInviteLinks] = useState<Array<{ playerId: string; name: string; handle?: string | null; token: string }>>([]);
+const [loadingInvites, setLoadingInvites] = useState(false);
+const [showInviteLinks, setShowInviteLinks] = useState(false);
+const [copiedPlayerId, setCopiedPlayerId] = useState<string | null>(null);
+const wsConnectionRef = useRef<ReturnType<typeof connectWs> | null>(null);
+const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+const refreshCountdownRef = useRef<NodeJS.Timeout | null>(null);
+const resizeStartXRef = useRef<number>(0);
+const resizeStartWidthRef = useRef<number>(0);
+const tempIdRef = useRef(0);
 
 	const currentLot = state.currentLot;
 	
@@ -195,7 +196,7 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 							currentLot: updatedCurrentLot,
 							recentBids: [
 								{
-									id: `temp-${Date.now()}`,
+									id: `temp-${Date.now()}-${tempIdRef.current++}`,
 									lotId: payload.lotId,
 									playerId: payload.playerId,
 									playerName: prev.players.find((p) => p.id === payload.playerId)?.name ?? "Unknown",
@@ -468,18 +469,37 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 		resizeStartWidthRef.current = sidebarWidth;
 	};
 
-	const post = async (url: string, body?: any) => {
-		const res = await fetch(url, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: body ? JSON.stringify(body) : undefined,
-		});
-		if (!res.ok) {
+	const post = async (
+		url: string,
+		body?: any,
+		opts?: { label?: string; retry?: number },
+	): Promise<boolean> => {
+		const attempt = async (): Promise<{ ok: boolean; error?: string }> => {
+			const res = await fetch(url, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: body ? JSON.stringify(body) : undefined,
+			});
+			if (res.ok) return { ok: true };
 			const e = await res.json().catch(() => ({}));
-			alert(e.error || "Request failed");
+			return { ok: false, error: e.error || e.details || res.statusText || "Request failed" };
+		};
+
+		const { ok, error } = await attempt();
+		if (ok) return true;
+
+		if (opts?.retry && opts.retry > 0) {
+			await new Promise((r) => setTimeout(r, 400));
+			const second = await attempt();
+			if (second.ok) return true;
+			const label = opts.label ? `${opts.label}: ` : "";
+			alert(`${label}${second.error ?? error ?? "Request failed"}`);
 			return false;
 		}
-		return true;
+
+		const label = opts?.label ? `${opts.label}: ` : "";
+		alert(`${label}${error ?? "Request failed"}`);
+		return false;
 	};
 
 	const loadInviteLinks = async () => {
@@ -531,10 +551,14 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 		}
 
 		setIsSubmittingBid(true);
-		const success = await post(`/api/lots/${currentLot.id}/bid`, {
-			playerId,
-			amountCents,
-		});
+		const success = await post(
+			`/api/lots/${currentLot.id}/bid`,
+			{
+				playerId,
+				amountCents,
+			},
+			{ label: "Place bid", retry: 1 },
+		);
 		setIsSubmittingBid(false);
 		
 		if (success) {
@@ -1486,7 +1510,10 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 													alert("No bid to accept");
 													return;
 												}
-												const success = await post(`/api/lots/${currentLot.id}/accept`);
+												const success = await post(`/api/lots/${currentLot.id}/accept`, undefined, {
+													label: "Sell team",
+													retry: 1,
+												});
 												if (!success) {
 													alert("Failed to sell team. Please try again or refresh the page.");
 												}
@@ -1520,7 +1547,7 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 									</>
 								)}
 								<button
-									onClick={() => post(`/api/events/${eventId}/undo`)}
+								onClick={() => post(`/api/events/${eventId}/undo`, undefined, { label: "Undo" })}
 									style={{
 										padding: "12px 24px",
 										backgroundColor: "#1f1f1f",
@@ -1645,7 +1672,7 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 								
 								return (
 									<div
-										key={bid.id}
+										key={`${bid.id ?? `temp-${bid.lotId}-${bid.createdAt ?? ""}`}-${index}`}
 										style={{
 											padding: "16px",
 											backgroundColor,

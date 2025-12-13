@@ -12,7 +12,7 @@ export async function POST(
 		const { lotId } = await params;
 		const lot = await prisma.lot.findUnique({
 			where: { id: lotId },
-			include: { event: true, team: true },
+			include: { event: { include: { ruleSet: true } }, team: true },
 		});
 
 		if (!lot) {
@@ -34,6 +34,7 @@ export async function POST(
 		const isTimerExpired = closesAtMs <= nowMs;
 
 		// Get anti-snipe extension from ruleSet
+		// NOTE: event.ruleSet must be included in the query above (maintenance safety)
 		const antiSnipeExtensionSeconds = lot.event.ruleSet?.antiSnipeExtensionSeconds ?? 17;
 		const antiSnipeExtensionMs = antiSnipeExtensionSeconds * 1000;
 
