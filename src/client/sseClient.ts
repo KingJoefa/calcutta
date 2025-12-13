@@ -1,3 +1,6 @@
+// Server-Sent Events client (replacement for WebSocket)
+// Works on Vercel free tier
+
 export type Message = {
 	type: string;
 	eventId: string;
@@ -7,80 +10,63 @@ export type Message = {
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "reconnecting";
 
-export type WsConnection = {
-	ws: WebSocket;
-	status: ConnectionStatus;
+export type SseConnection = {
+	ws: EventSource; // For compatibility with WsConnection interface
 	close: () => void;
+	status: ConnectionStatus;
 };
 
 const MAX_RECONNECT_DELAY = 30000; // 30 seconds max
 const INITIAL_RECONNECT_DELAY = 1000; // Start with 1 second
 
-export function connectWs(
+export function connectSse(
 	eventId: string,
 	onMessage: (msg: Message) => void,
 	onStatusChange?: (status: ConnectionStatus) => void,
-): WsConnection {
-	// Use SSE by default (works on Vercel free tier)
-	// Only use WebSocket if NEXT_PUBLIC_WS_PORT is explicitly set (local dev)
-	const useSse = !process.env.NEXT_PUBLIC_WS_PORT;
-
-	if (useSse) {
-		// Use SSE client (works on Vercel)
-		const { connectSse } = require("./sseClient");
-		return connectSse(eventId, onMessage, onStatusChange) as WsConnection;
-	}
-
-	// Use WebSocket for local development
-	const port = process.env.NEXT_PUBLIC_WS_PORT || "4000";
-	const protocol =
-		typeof window !== "undefined" && window.location.protocol === "https:"
-			? "wss"
-			: "ws";
-	const host =
-		typeof window !== "undefined"
-			? window.location.hostname
-			: "localhost";
-	const url = `${protocol}://${host}:${port}/?eventId=${eventId}`;
-
+): SseConnection {
 	let reconnectDelay = INITIAL_RECONNECT_DELAY;
 	let reconnectTimeout: NodeJS.Timeout | null = null;
 	let isIntentionallyClosed = false;
-	let currentWs: WebSocket | null = null;
+	let currentEventSource: EventSource | null = null;
 	let currentStatus: ConnectionStatus = "connecting";
+	let lastEventTs: number | null = null;
 
 	const updateStatus = (status: ConnectionStatus) => {
 		currentStatus = status;
 		onStatusChange?.(status);
 	};
 
-	const connect = (): WebSocket => {
+	const connect = (): EventSource => {
 		updateStatus(currentStatus === "disconnected" ? "reconnecting" : "connecting");
-		const ws = new WebSocket(url);
+		
+		const url = `/api/events/${eventId}/stream${lastEventTs ? `?since=${lastEventTs}` : ""}`;
+		const eventSource = new EventSource(url);
 
-		ws.onopen = () => {
+		eventSource.onopen = () => {
 			reconnectDelay = INITIAL_RECONNECT_DELAY; // Reset delay on successful connection
 			updateStatus("connected");
 		};
 
-		ws.onmessage = (ev) => {
+		eventSource.onmessage = (ev) => {
 			try {
-				const data = JSON.parse(ev.data as string) as Message;
+				if (ev.data.startsWith(":")) {
+					// Comment/keepalive message, ignore
+					return;
+				}
+				const data = JSON.parse(ev.data) as Message;
+				lastEventTs = data.ts;
 				onMessage(data);
-			} catch {
-				// ignore
+			} catch (err) {
+				console.error("Error parsing SSE message:", err);
 			}
 		};
 
-		ws.onerror = () => {
-			// Errors are handled by onclose
-		};
+		eventSource.onerror = () => {
+			eventSource.close();
+			currentEventSource = null;
 
-		ws.onclose = (event) => {
-			currentWs = null;
-			
 			// Don't reconnect if intentionally closed or if it's a normal closure
-			if (isIntentionallyClosed || event.code === 1000) {
+			if (isIntentionallyClosed) {
 				updateStatus("disconnected");
 				return;
 			}
@@ -89,7 +75,7 @@ export function connectWs(
 			updateStatus("reconnecting");
 			reconnectTimeout = setTimeout(() => {
 				if (!isIntentionallyClosed) {
-					currentWs = connect();
+					currentEventSource = connect();
 				}
 			}, reconnectDelay);
 
@@ -97,13 +83,13 @@ export function connectWs(
 			reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
 		};
 
-		return ws;
+		return eventSource;
 	};
 
-	currentWs = connect();
+	currentEventSource = connect();
 
 	return {
-		ws: currentWs,
+		ws: currentEventSource as any, // For compatibility with WsConnection interface
 		get status() {
 			return currentStatus;
 		},
@@ -113,13 +99,12 @@ export function connectWs(
 				clearTimeout(reconnectTimeout);
 				reconnectTimeout = null;
 			}
-			if (currentWs) {
-				currentWs.close(1000); // Normal closure
-				currentWs = null;
+			if (currentEventSource) {
+				currentEventSource.close();
+				currentEventSource = null;
 			}
 			updateStatus("disconnected");
 		},
 	};
 }
-
 

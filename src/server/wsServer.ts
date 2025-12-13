@@ -1,56 +1,70 @@
-import WebSocket, { WebSocketServer } from "ws";
-import http from "http";
+// WebSocket server wrapper for compatibility
+// Uses event broadcaster (SSE) for Vercel compatibility
+import { broadcast as eventBroadcast } from "./eventBroadcaster";
 
-type Client = WebSocket & { eventId?: string };
+// For local development, optionally use WebSocket server
+// For Vercel production, use SSE (eventBroadcaster)
+const USE_WEBSOCKET = process.env.NEXT_PUBLIC_WS_PORT && process.env.NODE_ENV === "development";
 
-declare global {
-	// eslint-disable-next-line no-var
-	var __calcuttaWsServer: {
-		server: WebSocketServer;
-		httpServer: http.Server;
-		broadcast: (eventId: string, type: string, payload: unknown) => void;
-	} | null;
-}
+let wsServer: {
+	broadcast: (eventId: string, type: string, payload: unknown) => void;
+} | null = null;
 
-function createServer() {
-	const port = Number(process.env.NEXT_PUBLIC_WS_PORT ?? 4000);
-	const httpServer = http.createServer();
-	const wss = new WebSocketServer({ server: httpServer });
+if (USE_WEBSOCKET) {
+	// Only create WebSocket server in development with WS_PORT set
+	try {
+		const WebSocket = require("ws");
+		const http = require("http");
+		const { WebSocketServer } = WebSocket;
+		
+		const port = Number(process.env.NEXT_PUBLIC_WS_PORT ?? 4000);
+		const httpServer = http.createServer();
+		const wss = new WebSocketServer({ server: httpServer });
 
-	wss.on("connection", (ws: Client, req) => {
-		try {
-			const url = new URL(req.url ?? "", "http://localhost");
-			const eventId = url.searchParams.get("eventId") ?? undefined;
-			(ws as Client).eventId = eventId;
-		} catch {
-			// ignore
-		}
+		type Client = WebSocket & { eventId?: string };
 
-		ws.on("message", (_msg) => {
-			// No-op for now
-		});
-	});
-
-	httpServer.listen(port);
-
-	const broadcast = (eventId: string, type: string, payload: unknown) => {
-		const message = JSON.stringify({ type, eventId, payload, ts: Date.now() });
-		wss.clients.forEach((client) => {
-			const c = client as Client;
-			if (c.readyState === WebSocket.OPEN && c.eventId === eventId) {
-				c.send(message);
+		wss.on("connection", (ws: Client, req: any) => {
+			try {
+				const url = new URL(req.url ?? "", "http://localhost");
+				const eventId = url.searchParams.get("eventId") ?? undefined;
+				(ws as Client).eventId = eventId;
+			} catch {
+				// ignore
 			}
-		});
-	};
 
-	return { server: wss, httpServer, broadcast };
+			ws.on("message", (_msg: unknown) => {
+				// No-op for now
+			});
+		});
+
+		httpServer.listen(port);
+
+		const broadcast = (eventId: string, type: string, payload: unknown) => {
+			const message = JSON.stringify({ type, eventId, payload, ts: Date.now() });
+			wss.clients.forEach((client) => {
+				const c = client as Client;
+				if (c.readyState === WebSocket.OPEN && c.eventId === eventId) {
+					c.send(message);
+				}
+			});
+			// Also broadcast via event broadcaster for SSE clients
+			eventBroadcast(eventId, type, payload);
+		};
+
+		wsServer = { broadcast };
+	} catch (err) {
+		console.warn("WebSocket server not available, using SSE only:", err);
+	}
 }
 
 export function getWsServer() {
-	if (!global.__calcuttaWsServer) {
-		global.__calcuttaWsServer = createServer();
+	if (wsServer) {
+		return wsServer;
 	}
-	return global.__calcuttaWsServer;
+	// Return SSE-based broadcaster
+	return {
+		broadcast: eventBroadcast,
+	};
 }
 
 

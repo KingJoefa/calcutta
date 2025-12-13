@@ -5,7 +5,7 @@ import { buildOwnerBreakdown, buildResultsSummary, buildTopSales } from "../../.
 export const dynamic = "force-dynamic";
 
 async function getResultsData(eventId: string) {
-	const [event, players, lots, sales, ledger] = await Promise.all([
+	const [event, players, lots, sales, ledger, bidsAgg] = await prisma.$transaction([
 		prisma.event.findUnique({
 			where: { id: eventId },
 			include: { ruleSet: true },
@@ -22,6 +22,10 @@ async function getResultsData(eventId: string) {
 			orderBy: { finalizedAt: "desc" },
 		}),
 		prisma.ledgerEntry.findMany({ where: { eventId } }),
+		prisma.bid.aggregate({
+			where: { eventId },
+			_sum: { amountCents: true },
+		}),
 	]);
 
 	if (!event) return null;
@@ -31,6 +35,7 @@ async function getResultsData(eventId: string) {
 		sales,
 		ledger,
 		ruleSet: event.ruleSet,
+		allBidsCents: bidsAgg._sum.amountCents ?? 0,
 	});
 
 	const owners = buildOwnerBreakdown({

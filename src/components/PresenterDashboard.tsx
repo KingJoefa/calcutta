@@ -63,6 +63,10 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 	const [isResizing, setIsResizing] = useState(false);
 	const [showNextTeamPreview, setShowNextTeamPreview] = useState(false);
 	const [wsStatus, setWsStatus] = useState<ConnectionStatus>("connecting");
+	const [inviteLinks, setInviteLinks] = useState<Array<{ playerId: string; name: string; handle?: string | null; token: string }>>([]);
+	const [loadingInvites, setLoadingInvites] = useState(false);
+	const [showInviteLinks, setShowInviteLinks] = useState(false);
+	const [copiedPlayerId, setCopiedPlayerId] = useState<string | null>(null);
 	const wsConnectionRef = useRef<ReturnType<typeof connectWs> | null>(null);
 	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 	const refreshCountdownRef = useRef<NodeJS.Timeout | null>(null);
@@ -478,6 +482,43 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 		return true;
 	};
 
+	const loadInviteLinks = async () => {
+		try {
+			setLoadingInvites(true);
+			const res = await fetch(`/api/events/${eventId}/player-links`);
+			if (!res.ok) throw new Error("Failed to fetch links");
+			const data = await res.json();
+			setInviteLinks(data.players ?? []);
+		} catch (err) {
+			console.error(err);
+			alert("Could not load invite links");
+		} finally {
+			setLoadingInvites(false);
+		}
+	};
+
+	const handleToggleInviteLinks = async () => {
+		if (showInviteLinks) {
+			setShowInviteLinks(false);
+			return;
+		}
+		if (inviteLinks.length === 0) {
+			await loadInviteLinks();
+		}
+		setShowInviteLinks(true);
+	};
+
+	const copyLink = async (playerId: string, token: string) => {
+		const url = `${window.location.origin}/audience/${eventId}?player=${playerId}&token=${token}`;
+		try {
+			await navigator.clipboard.writeText(url);
+			setCopiedPlayerId(playerId);
+			setTimeout(() => setCopiedPlayerId((prev) => (prev === playerId ? null : prev)), 1500);
+		} catch {
+			alert(url);
+		}
+	};
+
 	const handleBid = async (playerId: string, amountCents: number) => {
 		if (!currentLot || currentLot.status !== "open" || isSubmittingBid) return;
 		
@@ -754,6 +795,68 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 							</div>
 						</div>
 					)}
+					<div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "8px" }}>
+						<button
+							onClick={handleToggleInviteLinks}
+							disabled={loadingInvites}
+							style={{
+								padding: "10px 12px",
+								borderRadius: "8px",
+								border: "1px solid #2a2a2a",
+								backgroundColor: "#1a1a1a",
+								color: "#e5e5e5",
+								cursor: "pointer",
+								fontSize: "13px",
+								textAlign: "left",
+							}}
+						>
+							{loadingInvites ? "Loading invite links..." : showInviteLinks ? "Hide player invite links" : "Show player invite links"}
+						</button>
+						{showInviteLinks && inviteLinks.length > 0 && (
+							<div style={{ display: "grid", gap: "6px" }}>
+								{inviteLinks.map((p) => (
+									<button
+										key={p.playerId}
+										onClick={() => copyLink(p.playerId, p.token)}
+										style={{
+											textAlign: "left",
+											padding: "8px 10px",
+											borderRadius: "8px",
+											border: "1px solid #2f2f2f",
+											backgroundColor: "#0f172a",
+											color: "#e5e5e5",
+											fontSize: "13px",
+											cursor: "pointer",
+										}}
+									>
+										<span style={{ fontWeight: 600 }}>{p.name}</span>{" "}
+										{p.handle ? <span style={{ color: "#9ca3af" }}>{p.handle}</span> : null} — click to copy invite link
+										{copiedPlayerId === p.playerId && (
+											<span style={{ color: "#22c55e", fontWeight: 700, marginLeft: "8px" }}>Copied!</span>
+										)}
+									</button>
+								))}
+							</div>
+						)}
+						{showInviteLinks && inviteLinks.length > 0 && (
+							<button
+								onClick={() => setShowInviteLinks(false)}
+								style={{
+									padding: "6px 10px",
+									borderRadius: "6px",
+									border: "1px solid #2a2a2a",
+									backgroundColor: "#1a1a1a",
+									color: "#9ca3af",
+									fontSize: "11px",
+									cursor: "pointer",
+									marginTop: "4px",
+									textAlign: "left",
+								}}
+							>
+								Collapse list
+							</button>
+						)}
+					</div>
 				</div>
 
 				<div style={{ padding: "32px", flex: 1, display: "flex", flexDirection: "column", gap: "32px", overflowY: "auto" }}>

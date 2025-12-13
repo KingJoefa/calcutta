@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="16" fill="#0F1A2F"/>
+  <!-- group cues -->
+  <circle cx="21" cy="18" r="4" fill="#22C55E"/>
+  <circle cx="30" cy="15" r="3.5" fill="#3B82F6"/>
+  <circle cx="38" cy="18" r="4" fill="#0EA5E9"/>
+  <!-- gavel head -->
+  <rect x="25" y="26" width="20" height="10" rx="3" transform="rotate(-20 25 26)" fill="#F8FAFC"/>
+  <rect x="24" y="33" width="22" height="5" rx="2" transform="rotate(-20 24 33)" fill="#F8FAFC"/>
+  <!-- handle -->
+  <rect x="34" y="36" width="16" height="5" rx="2.2" transform="rotate(55 34 36)" fill="#F8FAFC"/>
+  <!-- base impact -->
+  <rect x="16" y="44" width="20" height="5" rx="2.5" fill="#22C55E"/>
+  <rect x="14" y="49" width="24" height="4" rx="2" fill="#0EA5E9"/>
+</svg>

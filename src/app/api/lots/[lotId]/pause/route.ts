@@ -29,21 +29,47 @@ export async function POST(
 
 		const isCurrentlyPaused = lot.pausedAt !== null;
 		const now = new Date();
+		const nowMs = now.getTime();
+		const closesAtMs = lot.closesAt.getTime();
+		const isTimerExpired = closesAtMs <= nowMs;
+
+		// Get anti-snipe extension from ruleSet
+		const antiSnipeExtensionSeconds = lot.event.ruleSet?.antiSnipeExtensionSeconds ?? 17;
+		const antiSnipeExtensionMs = antiSnipeExtensionSeconds * 1000;
 
 		// Toggle pause/resume
 		const result = await prisma.$transaction(async (tx) => {
 			if (isCurrentlyPaused) {
 				// Resume: calculate how long we were paused and adjust closesAt
+				// Handle state inconsistency: if pausedAt is null but we think it's paused,
+				// treat it as if timer expired and extend by anti-snipe time
 				if (!lot.pausedAt) {
-					throw new Error("Invalid state: pausedAt is null but isCurrentlyPaused is true");
+					// State inconsistency: treat as expired timer and extend by anti-snipe
+					const newClosesAt = new Date(nowMs + antiSnipeExtensionMs);
+					const updatedLot = await tx.lot.update({
+						where: { id: lotId },
+						data: {
+							pausedAt: null,
+							closesAt: newClosesAt,
+						},
+					});
+					return { lot: updatedLot, action: "resumed", pausedDurationSeconds: 0 };
 				}
 
-				const pausedDurationMs = now.getTime() - lot.pausedAt.getTime();
+				const pausedDurationMs = nowMs - lot.pausedAt.getTime();
 				const pausedDurationSeconds = Math.floor(pausedDurationMs / 1000);
 				const totalPauseDuration = lot.pauseDurationSeconds + pausedDurationSeconds;
 
-				// Extend closesAt by the paused duration
-				const newClosesAt = new Date(lot.closesAt.getTime() + pausedDurationMs);
+				// If timer expired (at 0 or in past), extend by anti-snipe time from now
+				// Otherwise, extend closesAt by the paused duration
+				let newClosesAt: Date;
+				if (isTimerExpired) {
+					// Timer is at 0 or expired: extend by anti-snipe time from now
+					newClosesAt = new Date(nowMs + antiSnipeExtensionMs);
+				} else {
+					// Timer still running: extend closesAt by the paused duration
+					newClosesAt = new Date(closesAtMs + pausedDurationMs);
+				}
 
 				const updatedLot = await tx.lot.update({
 					where: { id: lotId },
@@ -57,11 +83,19 @@ export async function POST(
 				return { lot: updatedLot, action: "resumed", pausedDurationSeconds };
 			} else {
 				// Pause: record when we paused
+				// If timer is expired (at 0), extend it by anti-snipe time immediately
+				let updateData: { pausedAt: Date; closesAt?: Date } = {
+					pausedAt: now,
+				};
+				
+				if (isTimerExpired) {
+					// Timer is at 0: extend by anti-snipe time from now
+					updateData.closesAt = new Date(nowMs + antiSnipeExtensionMs);
+				}
+
 				const updatedLot = await tx.lot.update({
 					where: { id: lotId },
-					data: {
-						pausedAt: now,
-					},
+					data: updateData,
 				});
 
 				return { lot: updatedLot, action: "paused" };

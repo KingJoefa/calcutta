@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getWsServer } from "@/server/wsServer";
 import { computeAntiSnipeExtension } from "@/lib/antiSnipe";
+import { validatePlayerToken } from "@/lib/playerToken";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export async function POST(
 	{ params }: { params: Promise<{ lotId: string }> },
 ) {
 	try {
-		const { playerId, amountCents } = await req.json();
+		const { playerId, amountCents, token } = await req.json();
 		if (!playerId || !Number.isInteger(amountCents)) {
 			return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
 		}
@@ -31,6 +32,14 @@ export async function POST(
 				{ error: `Bid must be at least $${(nextMin / 100).toFixed(2)} (current bid: $${(lot.currentBidCents / 100).toFixed(2)}, minimum increment: $${(minIncrement / 100).toFixed(2)})` },
 				{ status: 400 },
 			);
+		}
+
+		// If a token is present, validate it to prevent impersonation.
+		if (token) {
+			const ok = validatePlayerToken({ eventId: lot.eventId, playerId, token });
+			if (!ok) {
+				return NextResponse.json({ error: "Invalid player token" }, { status: 403 });
+			}
 		}
 
 		const bid = await prisma.$transaction(async (tx) => {
@@ -79,5 +88,4 @@ export async function POST(
 		return NextResponse.json({ error: "Internal error" }, { status: 500 });
 	}
 }
-
 

@@ -76,7 +76,8 @@ export function ResultsDashboard(props: ResultsDashboardProps) {
 						marginBottom: "24px",
 					}}
 				>
-					<StatCard label="Total Pot" value={currency(summary.potCents)} accent="#22c55e" />
+					<StatCard label="Total Pot (Winning Bids)" value={currency(summary.potCents)} accent="#22c55e" />
+					<StatCard label="All Bids (Sum)" value={currency(summary.allBidsCents)} accent="#f59e0b" />
 					<StatCard label="Teams Sold" value={`${summary.soldCount}/${summary.totalTeams}`} accent="#60a5fa" />
 					<StatCard label="Average Price" value={currency(summary.avgSaleCents)} accent="#f59e0b" />
 					<StatCard label="High / Low" value={`${currency(summary.maxSaleCents)} / ${currency(summary.minSaleCents)}`} accent="#a855f7" />

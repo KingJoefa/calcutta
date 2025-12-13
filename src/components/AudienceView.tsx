@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { connectWs, type Message, type ConnectionStatus } from "../client/wsClient";
 import { AuctionTimeline } from "./AuctionTimeline";
 
@@ -30,6 +31,9 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 	const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
 	const [refreshCountdown, setRefreshCountdown] = useState<number | null>(null);
 	const [selectedPlayerId, setSelectedPlayerId] = useState<string>("");
+	const [lockedPlayerId, setLockedPlayerId] = useState<string | null>(null);
+	const [playerToken, setPlayerToken] = useState<string | null>(null);
+	const [tokenStatus, setTokenStatus] = useState<"pending" | "valid" | "invalid" | null>(null);
 	const [bidAmount, setBidAmount] = useState<string>("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [bidAnimation, setBidAnimation] = useState<{ playerName: string; amountCents: number } | null>(null);
@@ -38,6 +42,10 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 	const wsConnectionRef = useRef<ReturnType<typeof connectWs> | null>(null);
 	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 	const refreshCountdownRef = useRef<NodeJS.Timeout | null>(null);
+	const searchParams = useSearchParams();
+	const lockedPlayerName = lockedPlayerId
+		? state.players.find((p) => p.id === lockedPlayerId)?.name ?? "Player"
+		: null;
 
 	// Function to refetch state from API
 	const refetchState = async () => {
@@ -250,6 +258,35 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 		});
 	}, [eventId]);
 
+	// Invite link token validation and locking
+	useEffect(() => {
+		const player = searchParams.get("player");
+		const token = searchParams.get("token");
+		if (!player || !token) {
+			setLockedPlayerId(null);
+			setPlayerToken(null);
+			setTokenStatus(null);
+			return;
+		}
+		setTokenStatus("pending");
+		fetch(`/api/events/${eventId}/player-validate?playerId=${player}&token=${token}`)
+			.then((res) => {
+				if (res.ok) return true;
+				return false;
+			})
+			.then((ok) => {
+				if (ok) {
+					setLockedPlayerId(player);
+					setSelectedPlayerId(player);
+					setPlayerToken(token);
+					setTokenStatus("valid");
+				} else {
+					setTokenStatus("invalid");
+				}
+			})
+			.catch(() => setTokenStatus("invalid"));
+	}, [eventId, searchParams]);
+
 	const handleBid = async () => {
 		if (!currentLot || !selectedPlayerId || !bidAmount) return;
 		
@@ -273,6 +310,7 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 				body: JSON.stringify({
 					playerId: selectedPlayerId,
 					amountCents,
+					token: playerToken ?? undefined,
 				}),
 			});
 
@@ -399,6 +437,49 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 					<h1 style={{ margin: 0, fontSize: "clamp(24px, 5vw, 36px)", fontWeight: 700, color: "#1a1a1a" }}>
 						{state.event.name}
 					</h1>
+					{tokenStatus === "valid" && lockedPlayerName && (
+						<div
+							style={{
+								marginTop: "12px",
+								display: "inline-flex",
+								alignItems: "center",
+								gap: "10px",
+								padding: "10px 16px",
+								borderRadius: "999px",
+								background: "linear-gradient(135deg, rgba(34,197,94,0.15), rgba(16,185,129,0.25))",
+								color: "#065f46",
+								fontWeight: 800,
+								fontSize: "15px",
+								letterSpacing: "0.3px",
+								border: "2px solid #22c55e",
+								boxShadow: "0 10px 25px rgba(34,197,94,0.25)",
+								textTransform: "uppercase",
+							}}
+						>
+							<span style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: "#22c55e", boxShadow: "0 0 0 4px rgba(34,197,94,0.25)" }} />
+							<span>{lockedPlayerName}</span>
+						</div>
+					)}
+					{tokenStatus === "invalid" && (
+						<div
+							style={{
+								marginTop: "10px",
+								display: "inline-flex",
+								alignItems: "center",
+								gap: "6px",
+								padding: "8px 12px",
+								borderRadius: "999px",
+								backgroundColor: "#fef2f2",
+								color: "#b91c1c",
+								fontWeight: 600,
+								fontSize: "14px",
+								border: "1px solid #f87171",
+							}}
+						>
+							<span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#f87171" }} />
+							<span>Invite link invalid</span>
+						</div>
+					)}
 				</div>
 
 				{/* Main Auction Card */}
@@ -557,26 +638,36 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 								</div>
 							) : (
 								<>
-									<select
-										value={selectedPlayerId}
-										onChange={(e) => setSelectedPlayerId(e.target.value)}
-										aria-label="Select your name"
-										style={{
-											padding: "16px",
-											fontSize: "clamp(16px, 4vw, 20px)",
-											borderRadius: "8px",
-											border: "2px solid #d1d5db",
-											backgroundColor: "#fff",
-											color: "#1a1a1a",
-										}}
-									>
-										<option value="">Select your name</option>
-										{state.players.map((p) => (
-											<option key={p.id} value={p.id}>
-												{p.name}
-											</option>
-										))}
-									</select>
+									{lockedPlayerId ? null : tokenStatus === "pending" ? (
+										<div style={{ textAlign: "center", fontSize: "14px", color: "#1d4ed8" }}>
+											Verifying invite link...
+										</div>
+									) : tokenStatus === "invalid" ? (
+										<div style={{ textAlign: "center", fontSize: "14px", color: "#b91c1c" }}>
+											Invite link is invalid. Please ask the host for a new link.
+										</div>
+									) : (
+										<select
+											value={selectedPlayerId}
+											onChange={(e) => setSelectedPlayerId(e.target.value)}
+											aria-label="Select your name"
+											style={{
+												padding: "16px",
+												fontSize: "clamp(16px, 4vw, 20px)",
+												borderRadius: "8px",
+												border: "2px solid #d1d5db",
+												backgroundColor: "#fff",
+												color: "#1a1a1a",
+											}}
+										>
+											<option value="">Select your name</option>
+											{state.players.map((p) => (
+												<option key={p.id} value={p.id}>
+													{p.name}
+												</option>
+											))}
+										</select>
+									)}
 									<div style={{ display: "flex", gap: "12px" }}>
 										<input
 											type="number"

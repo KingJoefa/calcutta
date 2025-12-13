@@ -10,102 +10,126 @@ export default function Home() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [selectedPreset, setSelectedPreset] = useState<string>("");
+	const [showAdvanced, setShowAdvanced] = useState(false);
 
 	return (
-		<div>
+		<div className={styles.page}>
 			<AuctionTimeline currentStep="home" />
 			<div className={styles.container}>
-				<div className={styles.card}>
-				<div className={styles.header}>
-					<h1 className={styles.title}>Create New Auction Event</h1>
-				</div>
+				<section className={styles.heroSection}>
+					<div className={styles.heroText}>
+						<div className={styles.heroBrand}>
+							<div className={styles.heroLogo}>
+								<img src="/auction-squad-icon.svg" alt="Auction Squad logo" />
+							</div>
+							<div className={styles.heroKicker}>Auction Squad</div>
+						</div>
+						<h1 className={styles.heroTitle}>Host a live Calcutta auction with friends</h1>
+						<p className={styles.heroSubtitle}>
+							Lock in the action for sports’ biggest moments with private invites, live bidding, and timing protection.
+						</p>
+					</div>
+					<div className={styles.heroHighlight}>
+						<div className={styles.highlightTitle}>How it works</div>
+						<ul className={styles.highlightList}>
+							<li>1) Add teams and players, create the event.</li>
+							<li>2) Share private links with your squad.</li>
+							<li>3) Start bidding—host controls the order and timer.</li>
+							<li>4) Everyone sees bids update instantly.</li>
+							<li>5) Export results once the auction locks.</li>
+						</ul>
+						<div className={styles.highlightBadge}>Grab your squad</div>
+					</div>
+				</section>
 
 				<form
-					className={styles.form}
+					className={styles.formGrid}
 					onSubmit={async (e) => {
 						e.preventDefault();
 						if (isSubmitting) return;
-						
+
 						setIsSubmitting(true);
 						setError(null);
-						
+
 						try {
 							const form = e.target as HTMLFormElement;
 							const data = new FormData(form);
-						const eventName = (data.get("name") as string) || "Football Calcutta Style Demo Event";
-						const playersText = (data.get("players") as string) || "";
-						const teamsText = (data.get("teams") as string) || "";
-						
-						// Parse players from textarea (one per line, optional @handle)
-						const players = playersText
-							.split("\n")
-							.map((line) => line.trim())
-							.filter(Boolean)
-							.map((line) => {
-								const match = line.match(/^(.+?)(?:\s+@(.+))?$/);
-								if (match) {
-									return {
-										name: match[1].trim(),
-										handle: match[2] ? `@${match[2].trim()}` : undefined,
-									};
-								}
-								return { name: line };
-							});
+							const eventName =
+								(data.get("name") as string) || "Football Calcutta Style Demo Event";
+							const playersText = (data.get("players") as string) || "";
+							const teamsText = (data.get("teams") as string) || "";
 
-						// Default to demo players if none provided
-						const finalPlayers = players.length > 0 
-							? players 
-							: [
-								{ name: "Alice", handle: "@alice" },
-								{ name: "Bob", handle: "@bob" },
-								{ name: "Carol", handle: "@carol" },
-								{ name: "Dave", handle: "@dave" },
-							];
+							// Parse players from textarea (one per line, optional @handle)
+							const players = playersText
+								.split("\n")
+								.map((line) => line.trim())
+								.filter(Boolean)
+								.map((line) => {
+									const match = line.match(/^(.+?)(?:\s+@(.+))?$/);
+									if (match) {
+										return {
+											name: match[1].trim(),
+											handle: match[2] ? `@${match[2].trim()}` : undefined,
+										};
+									}
+									return { name: line };
+								});
 
-						// Parse teams from textarea (one per line, optional seed/region info)
-						const teams = teamsText
-							.split("\n")
-							.map((line) => line.trim())
-							.filter(Boolean)
-							.map((line) => {
-								// Try to parse seed/region info: "Team Name (AFC #1)", "Team Name (NFC #2)", or "Team Name (Seed #1)"
-								const seedMatch = line.match(/^(.+?)\s*\(([A-Za-z\s]+)\s*#(\d+)\)$/);
-								if (seedMatch) {
-									return {
-										name: seedMatch[1].trim(),
-										region: seedMatch[2].trim(),
-										seed: parseInt(seedMatch[3], 10),
-									};
-								}
-								return { name: line };
-							});
+							// Default to demo players if none provided
+							const finalPlayers =
+								players.length > 0
+									? players
+									: [
+											{ name: "Alice", handle: "@alice" },
+											{ name: "Bob", handle: "@bob" },
+											{ name: "Carol", handle: "@carol" },
+											{ name: "Dave", handle: "@dave" },
+									  ];
 
-						// Convert dollars to cents for API
-						const anteDollars = Number(data.get("anteDollars") || 10);
-						const minIncrementDollars = Number(data.get("minIncrementDollars") || 5);
+							// Parse teams from textarea (one per line, optional seed/region info)
+							const teams = teamsText
+								.split("\n")
+								.map((line) => line.trim())
+								.filter(Boolean)
+								.map((line) => {
+									// Try to parse seed/region info: "Team Name (AFC #1)", "Team Name (NFC #2)", or "Team Name (Seed #1)"
+									const seedMatch = line.match(/^(.+?)\s*\(([A-Za-z\s]+)\s*#(\d+)\)$/);
+									if (seedMatch) {
+										return {
+											name: seedMatch[1].trim(),
+											region: seedMatch[2].trim(),
+											seed: parseInt(seedMatch[3], 10),
+										};
+									}
+									return { name: line };
+								});
 
-						const payload = {
-							name: eventName,
-							// rngSeed is now optional - will be auto-generated by the API
-							ruleSet: {
-								anteCents: Math.round(anteDollars * 100),
-								minIncrementCents: Math.round(minIncrementDollars * 100),
-								auctionTimerSeconds: Number(data.get("auctionTimerSeconds") || 45),
-								antiSnipeExtensionSeconds: Number(
-									data.get("antiSnipeExtensionSeconds") || 17,
-								),
-								roundAllocations: {
-									wildcard: 0.04,
-									divisional: 0.06,
-									conference: 0.12,
-									superbowl: 0.28,
+							// Convert dollars to cents for API
+							const anteDollars = Number(data.get("anteDollars") || 10);
+							const minIncrementDollars = Number(data.get("minIncrementDollars") || 5);
+
+							const payload = {
+								name: eventName,
+								// rngSeed is now optional - will be auto-generated by the API
+								ruleSet: {
+									anteCents: Math.round(anteDollars * 100),
+									minIncrementCents: Math.round(minIncrementDollars * 100),
+									auctionTimerSeconds: Number(data.get("auctionTimerSeconds") || 45),
+									antiSnipeExtensionSeconds: Number(
+										data.get("antiSnipeExtensionSeconds") || 17,
+									),
+									roundAllocations: {
+										wildcard: 0.04,
+										divisional: 0.06,
+										conference: 0.12,
+										superbowl: 0.28,
+									},
+									payoutBasis: "total_pot",
+									includeAnteInPot: true,
 								},
-								payoutBasis: "total_pot",
-								includeAnteInPot: true,
-							},
-							players: finalPlayers,
-							teams: teams.length > 0 ? teams : undefined, // Only include if teams provided
-						};
+								players: finalPlayers,
+								teams: teams.length > 0 ? teams : undefined, // Only include if teams provided
+							};
 							const response = await fetch("/api/events", {
 								method: "POST",
 								headers: { "content-type": "application/json" },
@@ -113,7 +137,7 @@ export default function Home() {
 							});
 
 							const res = await response.json();
-							
+
 							if (!response.ok) {
 								const errorMsg = res.error || "Failed to create event";
 								const details = res.details ? `\n\nDetails: ${res.details}` : "";
@@ -132,249 +156,214 @@ export default function Home() {
 						}
 					}}
 				>
-					<div className={styles.section}>
-						<h2 className={styles.sectionTitle}>Event Settings</h2>
-						<div className={styles.fieldsGrid}>
-							<div className={styles.field}>
-								<label htmlFor="name" className={styles.label}>
-									Event Name
-								</label>
-								<input
-									id="name"
-									name="name"
-									type="text"
-									className={styles.input}
-									placeholder="Super Bowl 2024"
-									required
-								/>
+					<div className={styles.sideColumn}>
+						<div className={styles.section}>
+							<div className={styles.sectionHeader}>
+								<h3 className={styles.sectionTitle}>Teams</h3>
+								<p className={styles.sectionSubtitle}>
+									Paste your bracket or use presets; one per line (seed/region optional).
+								</p>
 							</div>
-
 							<div className={styles.field}>
-								<label htmlFor="anteDollars" className={styles.label}>
-									Ante
-								</label>
-								<input
-									id="anteDollars"
-									name="anteDollars"
-									type="number"
-									step="0.01"
-									min="0"
-									className={styles.input}
-									placeholder="10"
-									defaultValue="10"
-								/>
-								<span className={styles.helperText}>Entry fee per player in dollars</span>
-							</div>
-
-							<div className={styles.field}>
-								<label htmlFor="minIncrementDollars" className={styles.label}>
-									Minimum Increment
-								</label>
-								<input
-									id="minIncrementDollars"
-									name="minIncrementDollars"
-									type="number"
-									step="0.01"
-									min="0"
-									className={styles.input}
-									placeholder="5.00"
-									defaultValue="5"
-								/>
-								<span className={styles.helperText}>Minimum bid increase in dollars</span>
-							</div>
-
-							<div className={styles.field}>
-								<label htmlFor="auctionTimerSeconds" className={styles.label}>
-									Auction Timer
-								</label>
-								<input
-									id="auctionTimerSeconds"
-									name="auctionTimerSeconds"
-									type="number"
-									className={styles.input}
-									placeholder="45"
-									defaultValue="45"
-								/>
-								<span className={styles.helperText}>Countdown duration in seconds</span>
-							</div>
-
-							<div className={styles.field}>
-								<label htmlFor="antiSnipeExtensionSeconds" className={styles.label}>
-									Anti-Snipe Extension
-								</label>
-								<input
-									id="antiSnipeExtensionSeconds"
-									name="antiSnipeExtensionSeconds"
-									type="number"
-									className={styles.input}
-									placeholder="17"
-									defaultValue="17"
-								/>
-								<span className={styles.helperText}>Extension time when bid placed near end</span>
-							</div>
-						</div>
-					</div>
-
-					<div className={styles.section}>
-						<h2 className={styles.sectionTitle}>Players</h2>
-						<div className={styles.field}>
-							<label htmlFor="players" className={styles.label}>
-								Player List
-							</label>
-							<span className={styles.helperText}>
-								One player per line. You can use @handles (e.g., "John @johnny")
-							</span>
-							<textarea
-								id="players"
-								name="players"
-								className={styles.textarea}
-								placeholder="Alice&#10;Bob @bob&#10;Carol @carol&#10;Dave"
-							/>
-						</div>
-					</div>
-
-					<div className={styles.section}>
-						<h2 className={styles.sectionTitle}>Football Teams</h2>
-						<div className={styles.field}>
-							<label htmlFor="teams" className={styles.label}>
-								Team List
-							</label>
-							<span className={styles.helperText}>
-								One team per line (typically 14 teams for Football playoffs). 
-								Optional: include seed/region info (e.g., "Kansas City Chiefs (AFC #1)").
-								Leave blank to import teams later.
-							</span>
-							<div style={{ marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-								<button
-									type="button"
-									onClick={() => {
-										const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
-										if (teamsTextarea) {
-											const teams = getPresetTeams("college_football");
-											teamsTextarea.value = teams.join("\n");
-											setSelectedPreset("college_football");
-										}
-									}}
-									style={{
-										padding: "6px 12px",
-										fontSize: "13px",
-										backgroundColor: selectedPreset === "college_football" ? "#4ade80" : "#f3f4f6",
-										color: selectedPreset === "college_football" ? "#000" : "#374151",
-										border: "1px solid #d1d5db",
-										borderRadius: "6px",
-										cursor: "pointer",
-										fontWeight: selectedPreset === "college_football" ? 600 : 400,
-									}}
-								>
-									🏈 College Football
-								</button>
-								<button
-									type="button"
-									onClick={() => {
-										const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
-										if (teamsTextarea) {
-											const teams = getPresetTeams("world_cup");
-											teamsTextarea.value = teams.join("\n");
-											setSelectedPreset("world_cup");
-										}
-									}}
-									style={{
-										padding: "6px 12px",
-										fontSize: "13px",
-										backgroundColor: selectedPreset === "world_cup" ? "#4ade80" : "#f3f4f6",
-										color: selectedPreset === "world_cup" ? "#000" : "#374151",
-										border: "1px solid #d1d5db",
-										borderRadius: "6px",
-										cursor: "pointer",
-										fontWeight: selectedPreset === "world_cup" ? 600 : 400,
-									}}
-								>
-									⚽ World Cup
-								</button>
-								<button
-									type="button"
-									onClick={() => {
-										const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
-										if (teamsTextarea) {
-											const teams = getPresetTeams("football_playoffs");
-											teamsTextarea.value = teams.join("\n");
-											setSelectedPreset("football_playoffs");
-										}
-									}}
-									style={{
-										padding: "6px 12px",
-										fontSize: "13px",
-										backgroundColor: selectedPreset === "football_playoffs" ? "#4ade80" : "#f3f4f6",
-										color: selectedPreset === "football_playoffs" ? "#000" : "#374151",
-										border: "1px solid #d1d5db",
-										borderRadius: "6px",
-										cursor: "pointer",
-										fontWeight: selectedPreset === "football_playoffs" ? 600 : 400,
-									}}
-								>
-									🏈 Football Playoffs
-								</button>
-								<button
-									type="button"
-									onClick={() => {
-										const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
-										if (teamsTextarea) {
-											teamsTextarea.value = "";
+								<div className={styles.presetRow}>
+									<button
+										type="button"
+										onClick={() => {
+											const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
+											if (teamsTextarea) {
+												const teams = getPresetTeams("college_football");
+												teamsTextarea.value = teams.join("\n");
+												setSelectedPreset("college_football");
+											}
+										}}
+										className={`${styles.presetButton} ${selectedPreset === "college_football" ? styles.presetActive : ""}`}
+									>
+										🏈 College Football
+									</button>
+									<button
+										type="button"
+										onClick={() => {
+											const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
+											if (teamsTextarea) {
+												const teams = getPresetTeams("world_cup");
+												teamsTextarea.value = teams.join("\n");
+												setSelectedPreset("world_cup");
+											}
+										}}
+										className={`${styles.presetButton} ${selectedPreset === "world_cup" ? styles.presetActive : ""}`}
+									>
+										⚽ World Cup
+									</button>
+									<button
+										type="button"
+										onClick={() => {
+											const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
+											if (teamsTextarea) {
+												const teams = getPresetTeams("football_playoffs");
+												teamsTextarea.value = teams.join("\n");
+												setSelectedPreset("football_playoffs");
+											}
+										}}
+										className={`${styles.presetButton} ${selectedPreset === "football_playoffs" ? styles.presetActive : ""}`}
+									>
+										🏈 Football Playoffs
+									</button>
+									<button
+										type="button"
+										onClick={() => {
+											const teamsTextarea = document.getElementById("teams") as HTMLTextAreaElement;
+											if (teamsTextarea) {
+												teamsTextarea.value = "";
+												setSelectedPreset("");
+											}
+										}}
+										className={styles.presetButton}
+									>
+										Clear
+									</button>
+								</div>
+								<textarea
+									id="teams"
+									name="teams"
+									className={styles.textarea}
+									rows={6}
+									placeholder={"Kansas City Chiefs (AFC #1)\nBuffalo Bills (AFC #2)\nBaltimore Ravens (AFC #3)"}
+									onChange={() => {
+										// Clear preset selection when user manually edits
+										if (selectedPreset) {
 											setSelectedPreset("");
 										}
 									}}
-									style={{
-										padding: "6px 12px",
-										fontSize: "13px",
-										backgroundColor: "#f3f4f6",
-										color: "#374151",
-										border: "1px solid #d1d5db",
-										borderRadius: "6px",
-										cursor: "pointer",
-									}}
-								>
-									Clear
-								</button>
+								/>
 							</div>
-							<textarea
-								id="teams"
-								name="teams"
-								className={styles.textarea}
-								rows={8}
-								placeholder="Kansas City Chiefs (AFC #1)&#10;Buffalo Bills (AFC #2)&#10;Baltimore Ravens (AFC #3)&#10;..."
-								onChange={() => {
-									// Clear preset selection when user manually edits
-									if (selectedPreset) {
-										setSelectedPreset("");
-									}
-								}}
-							/>
+						</div>
+
+						<div className={styles.section}>
+							<div className={styles.sectionHeader}>
+								<h3 className={styles.sectionTitle}>Players</h3>
+								<p className={styles.sectionSubtitle}>One per line (supports @handles).</p>
+							</div>
+							<div className={styles.field}>
+								<textarea
+									id="players"
+									name="players"
+									className={styles.textarea}
+									placeholder={"Alice\nBob @bob\nCarol @carol\nDave"}
+								/>
+							</div>
 						</div>
 					</div>
 
-					{error && (
-						<div style={{ 
-							padding: "12px", 
-							background: "rgba(239, 68, 68, 0.1)", 
-							border: "1px solid rgba(239, 68, 68, 0.3)",
-							borderRadius: "8px",
-							color: "#fca5a5",
-							fontSize: "14px"
-						}}>
-							{error}
+					<div className={styles.formCard}>
+						<div className={styles.cardHeader}>
+							<div>
+								<h2 className={styles.cardTitle}>Create New Auction Event</h2>
+								<p className={styles.cardSubtitle}>Set the rules and start inviting your squad.</p>
+							</div>
 						</div>
-					)}
-					<div className={styles.actions}>
-						<button 
-							type="submit" 
-							className={styles.button}
-							disabled={isSubmitting}
-						>
-							{isSubmitting ? "Creating..." : "Create Event"}
-						</button>
+
+						<div className={styles.section}>
+							<div className={styles.fieldsGrid}>
+								<div className={styles.field}>
+									<label htmlFor="name" className={styles.label}>
+										Event Name
+									</label>
+									<input
+										id="name"
+										name="name"
+										type="text"
+										className={styles.input}
+										placeholder="Playoffs 2025"
+										required
+									/>
+								</div>
+
+								<div className={styles.field}>
+									<label htmlFor="anteDollars" className={styles.label}>
+										Ante
+									</label>
+									<input
+										id="anteDollars"
+										name="anteDollars"
+										type="number"
+										step="0.01"
+										min="0"
+										className={styles.input}
+										placeholder="10"
+										defaultValue="10"
+									/>
+									<span className={styles.helperText}>Entry fee per player in dollars</span>
+								</div>
+
+								<div className={styles.field}>
+									<label htmlFor="auctionTimerSeconds" className={styles.label}>
+										Auction Timer
+									</label>
+									<input
+										id="auctionTimerSeconds"
+										name="auctionTimerSeconds"
+										type="number"
+										className={styles.input}
+										placeholder="45"
+										defaultValue="45"
+									/>
+								</div>
+
+								{showAdvanced && (
+									<>
+										<div className={styles.field}>
+											<label htmlFor="minIncrementDollars" className={styles.label}>
+												Minimum Increment
+											</label>
+											<input
+												id="minIncrementDollars"
+												name="minIncrementDollars"
+												type="number"
+												step="0.01"
+												min="0"
+												className={styles.input}
+												placeholder="5.00"
+												defaultValue="5"
+											/>
+										</div>
+
+										<div className={styles.field}>
+											<label htmlFor="antiSnipeExtensionSeconds" className={styles.label}>
+												Anti-Snipe Extension
+											</label>
+											<input
+												id="antiSnipeExtensionSeconds"
+												name="antiSnipeExtensionSeconds"
+												type="number"
+												className={styles.input}
+												placeholder="17"
+												defaultValue="17"
+											/>
+										</div>
+									</>
+								)}
+							</div>
+							<button
+								type="button"
+								className={styles.advancedToggle}
+								onClick={() => setShowAdvanced((prev) => !prev)}
+							>
+								{showAdvanced ? "▲ Hide advanced options" : "▼ Advanced options"}
+							</button>
+						</div>
+
+						{error && <div className={styles.errorBox}>{error}</div>}
+						<div className={styles.actionsBar}>
+							<button type="submit" className={styles.button} disabled={isSubmitting}>
+								{isSubmitting ? "Creating..." : "Create Event"}
+							</button>
+						</div>
 					</div>
 				</form>
+
+				<div className={styles.infoGrid}>
 				</div>
+
 			</div>
 		</div>
 	);

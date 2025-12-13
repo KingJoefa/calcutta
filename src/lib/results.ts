@@ -1,5 +1,4 @@
 import type { LedgerEntry, RuleSet, Sale, Team, Player, Lot } from "../generated/prisma";
-import { computeTotalPotCents } from "./payout";
 
 export type ResultsSummary = {
 	allSold: boolean;
@@ -7,7 +6,8 @@ export type ResultsSummary = {
 	soldCount: number;
 	totalSalesCents: number;
 	anteCents: number;
-	potCents: number;
+	potCents: number; // sum of winning sale prices (NOT all bids)
+	allBidsCents: number; // sum of every bid placed (informational)
 	avgSaleCents: number | null;
 	maxSaleCents: number | null;
 	minSaleCents: number | null;
@@ -34,6 +34,7 @@ export function buildResultsSummary(args: {
 	sales: Array<Pick<Sale, "amountCents">>;
 	ledger: Array<Pick<LedgerEntry, "type" | "amountCents">>;
 	ruleSet: Pick<RuleSet, "includeAnteInPot"> | null;
+	allBidsCents?: number;
 }): ResultsSummary {
 	const { lots, sales, ledger, ruleSet } = args;
 	const soldCount = sales.length;
@@ -43,15 +44,13 @@ export function buildResultsSummary(args: {
 	const anteCents = ledger
 		.filter((l) => l.type === "ante")
 		.reduce((sum, l) => sum + (l.amountCents ?? 0), 0);
-	const anteEntries = ledger.filter((l) => l.type === "ante");
-	const potCents = computeTotalPotCents({
-		sales: sales as any,
-		anteLedger: anteEntries as any,
-		includeAnteInPot: ruleSet?.includeAnteInPot ?? true,
-	});
+	// Total Pot = sum of winning sale prices, plus ante if configured to include ante.
+	const potCents = totalSalesCents + (ruleSet?.includeAnteInPot ? anteCents : 0);
 	const maxSaleCents = sales.length ? Math.max(...sales.map((s) => s.amountCents ?? 0)) : null;
 	const minSaleCents = sales.length ? Math.min(...sales.map((s) => s.amountCents ?? 0)) : null;
 	const avgSaleCents = sales.length ? Math.round(totalSalesCents / sales.length) : null;
+	// allBidsCents is informational; default to totalSales if not provided.
+	const allBidsCents = args.allBidsCents ?? totalSalesCents;
 
 	return {
 		allSold,
@@ -60,6 +59,7 @@ export function buildResultsSummary(args: {
 		totalSalesCents,
 		anteCents,
 		potCents,
+		allBidsCents,
 		avgSaleCents,
 		maxSaleCents,
 		minSaleCents,
