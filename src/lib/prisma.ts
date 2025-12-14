@@ -18,8 +18,8 @@ function normalizeDatabaseUrl(raw?: string): string | undefined {
 		if (isSupabasePooler) {
 			if (!url.searchParams.has("pgbouncer")) url.searchParams.set("pgbouncer", "true");
 			if (!url.searchParams.has("statement_cache_size")) url.searchParams.set("statement_cache_size", "0");
-			// Keep connection count low for serverless + pooler to avoid exhaustion.
-			if (!url.searchParams.has("connection_limit")) url.searchParams.set("connection_limit", "1");
+			// NOTE: don't force connection_limit=1; it can cause contention/timeouts under load
+			// (e.g. polling + writes). If you want to cap it, do it explicitly in the env var.
 			return url.toString();
 		}
 		return raw;
@@ -33,6 +33,13 @@ export const prisma: PrismaClient =
 	global.prismaGlobal ??
 	new PrismaClient({
 		log: ["error", "warn"],
+		// Reduce flakiness with PgBouncer/pooler + serverless concurrency:
+		// - maxWait: time to wait for a connection to start a transaction
+		// - timeout: max time a transaction is allowed to run
+		transactionOptions: {
+			maxWait: 10_000,
+			timeout: 20_000,
+		},
 		datasources: {
 			db: {
 				url: normalizeDatabaseUrl(process.env.DATABASE_URL),
