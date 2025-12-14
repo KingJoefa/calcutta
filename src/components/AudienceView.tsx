@@ -19,17 +19,28 @@ type Lot = {
 	team: Team;
 };
 
+type SoldLot = {
+	lotId: string;
+	teamName: string;
+	playerId: string;
+	playerName: string;
+	amountCents: number;
+	soldAt: string;
+};
+
 type AuctionState = {
 	event: { id: string; name: string; status: string };
 	ruleSet: { minIncrementCents: number; intermissionSeconds: number } | null;
 	currentLot: Lot | null;
 	players: Array<{ id: string; name: string }>;
+	soldLots?: SoldLot[];
 };
 
 export function AudienceView({ eventId, initialState }: { eventId: string; initialState: AuctionState }) {
 	const [state, setState] = useState<AuctionState>(initialState);
 	const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
 	const [refreshCountdown, setRefreshCountdown] = useState<number | null>(null);
+	const [isMobile, setIsMobile] = useState(false);
 	const [selectedPlayerId, setSelectedPlayerId] = useState<string>("");
 	const [lockedPlayerId, setLockedPlayerId] = useState<string | null>(null);
 	const [playerToken, setPlayerToken] = useState<string | null>(null);
@@ -47,6 +58,22 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 	const lockedPlayerName = lockedPlayerId
 		? state.players.find((p) => p.id === lockedPlayerId)?.name ?? "Player"
 		: null;
+	
+	// Mobile-only UI helpers (do not change desktop behavior)
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		const mq = window.matchMedia("(max-width: 900px)");
+		const update = () => setIsMobile(mq.matches);
+		update();
+		if (mq.addEventListener) mq.addEventListener("change", update);
+		// eslint-disable-next-line deprecation/deprecation
+		else mq.addListener(update);
+		return () => {
+			if (mq.removeEventListener) mq.removeEventListener("change", update);
+			// eslint-disable-next-line deprecation/deprecation
+			else mq.removeListener(update);
+		};
+	}, []);
 
 	// Function to refetch state from API
 	const refetchState = async () => {
@@ -59,6 +86,7 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 					ruleSet: newState.ruleSet,
 					currentLot: newState.currentLot,
 					players: newState.players,
+					soldLots: newState.soldLots ?? [],
 				});
 				// Clear refresh countdown when state is refreshed
 				setRefreshCountdown(null);
@@ -364,6 +392,8 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 	const highBidder = currentLot?.highBidderId
 		? state.players.find((p) => p.id === currentLot.highBidderId)?.name ?? "—"
 		: "—";
+	
+	const soldLots = state.soldLots ?? [];
 
 	return (
 		<div
@@ -781,6 +811,66 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 										Minimum bid: <strong>${minBid.toFixed(2)}</strong>
 									</div>
 								</>
+							)}
+						</div>
+					)}
+					
+					{/* Mobile-only: show won/owned teams for host mode so they don't need to jump to Results */}
+					{isHostMode && isMobile && (
+						<div
+							style={{
+								marginTop: "18px",
+								padding: "16px",
+								borderRadius: "12px",
+								border: "1px solid #e5e7eb",
+								backgroundColor: "#f8fafc",
+								maxWidth: "520px",
+								marginLeft: "auto",
+								marginRight: "auto",
+							}}
+						>
+							<div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "12px" }}>
+								<div style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>Owned Teams</div>
+								<div style={{ fontSize: "12px", color: "#475569" }}>{soldLots.length} total</div>
+							</div>
+							{soldLots.length === 0 ? (
+								<div style={{ marginTop: "10px", fontSize: "13px", color: "#64748b" }}>
+									No teams sold yet.
+								</div>
+							) : (
+								<div style={{ marginTop: "10px", display: "grid", gap: "10px" }}>
+									{soldLots.slice(0, 12).map((s) => (
+										<div
+											key={s.lotId}
+											style={{
+												padding: "12px",
+												borderRadius: "12px",
+												border: "1px solid #e2e8f0",
+												backgroundColor: "#ffffff",
+											}}
+										>
+											<div style={{ display: "flex", justifyContent: "space-between", gap: "12px" }}>
+												<div style={{ minWidth: 0 }}>
+													<div style={{ fontWeight: 800, color: "#0f172a", fontSize: "14px" }}>{s.teamName}</div>
+													<div style={{ marginTop: "2px", fontSize: "12px", color: "#475569" }}>{s.playerName}</div>
+												</div>
+												<div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+													<div style={{ fontWeight: 900, color: "#16a34a", fontSize: "14px" }}>
+														${(s.amountCents / 100).toFixed(2)}
+													</div>
+													<div style={{ marginTop: "2px", fontSize: "11px", color: "#64748b" }}>
+														{new Date(s.soldAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+													</div>
+												</div>
+											</div>
+										</div>
+									))}
+									{soldLots.length > 12 && (
+										<div style={{ fontSize: "12px", color: "#64748b", textAlign: "center" }}>
+											…and {soldLots.length - 12} more (see Results for full list)
+										</div>
+									)}
+								</div>
 							)}
 						</div>
 					)}

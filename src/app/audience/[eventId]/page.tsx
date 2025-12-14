@@ -24,6 +24,12 @@ async function getAuctionState(eventId: string) {
 	const currentLot =
 		lots.find((l) => l.status === "open") ??
 		lots.find((l) => l.status === "pending");
+	
+	const sales = await prisma.sale.findMany({
+		where: { eventId },
+		include: { player: true, lot: { include: { team: true } } },
+		orderBy: { finalizedAt: "desc" },
+	});
 
 	return {
 		event: {
@@ -35,6 +41,14 @@ async function getAuctionState(eventId: string) {
 		players: players.map((p) => ({
 			id: p.id,
 			name: p.name,
+		})),
+		soldLots: sales.map((s) => ({
+			lotId: s.lotId,
+			teamName: s.lot.team.name,
+			playerId: s.playerId,
+			playerName: s.player.name,
+			amountCents: s.amountCents,
+			soldAt: s.finalizedAt.toISOString(),
 		})),
 		currentLot: currentLot
 			? {
