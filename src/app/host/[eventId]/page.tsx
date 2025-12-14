@@ -17,6 +17,7 @@ export default async function HostPage({
 		return <div>Event not found</div>;
 	}
 	
-	// Redirect to presenter dashboard (unified host view)
-	redirect(`/presenter/${eventId}`);
+	// Canonical host link: use the dropdown/timer view in host mode.
+	// (Invite-link bidders won't have host=1, so they remain blocked at timer=0.)
+	redirect(`/audience/${eventId}?host=1`);
 }
