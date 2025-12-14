@@ -257,12 +257,17 @@ const tempIdRef = useRef(0);
 						// If next lot is pending, keep currentLot as the sold lot until countdown finishes
 						// Otherwise, set currentLot to nextLot immediately
 						const shouldWaitForCountdown = nextLot?.status === "pending" && nextPending;
+						const soldLotState =
+							updatedLots.find((l) => l.id === payload.lotId) ??
+							(prev.currentLot && prev.currentLot.id === payload.lotId
+								? { ...prev.currentLot, status: "sold" as const }
+								: null);
 						
 						const updatedState = {
 							...prev,
 							lots: updatedLots,
-							// Keep showing sold lot if we're waiting for countdown, otherwise show next lot
-							currentLot: shouldWaitForCountdown ? prev.currentLot : nextLot,
+							// Keep showing the sold lot (as sold) if we're waiting for countdown, otherwise show next lot
+							currentLot: shouldWaitForCountdown ? soldLotState : nextLot,
 							recentBids: clearedBids,
 							soldLots: updatedSoldLots,
 						};
