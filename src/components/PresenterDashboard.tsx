@@ -59,6 +59,7 @@ export function PresenterDashboard({ eventId, initialState }: { eventId: string;
 	const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
 	const [refreshCountdown, setRefreshCountdown] = useState<number | null>(null);
 	const [isPaused, setIsPaused] = useState(false);
+	const [isMobile, setIsMobile] = useState(false);
 	const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 	const [bidAmount, setBidAmount] = useState<number>(0);
 	const [bidInputValue, setBidInputValue] = useState<string>("");
@@ -78,6 +79,22 @@ const refreshCountdownRef = useRef<NodeJS.Timeout | null>(null);
 const resizeStartXRef = useRef<number>(0);
 const resizeStartWidthRef = useRef<number>(0);
 const tempIdRef = useRef(0);
+
+	// Mobile responsiveness: stack panes on small screens (keep desktop unchanged)
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		const mq = window.matchMedia("(max-width: 900px)");
+		const update = () => setIsMobile(mq.matches);
+		update();
+		if (mq.addEventListener) mq.addEventListener("change", update);
+		// eslint-disable-next-line deprecation/deprecation
+		else mq.addListener(update);
+		return () => {
+			if (mq.removeEventListener) mq.removeEventListener("change", update);
+			// eslint-disable-next-line deprecation/deprecation
+			else mq.removeListener(update);
+		};
+	}, []);
 
 	const currentLot = state.currentLot;
 	
@@ -720,23 +737,25 @@ const tempIdRef = useRef(0);
 				style={{
 					display: "flex",
 					flex: 1,
-					overflow: "hidden",
+					flexDirection: isMobile ? "column" : "row",
+					overflow: isMobile ? "auto" : "hidden",
 				}}
 			>
 			{/* Left Control Panel */}
 			<div
 				style={{
-					width: `${sidebarWidth}px`,
-					minWidth: "400px",
-					maxWidth: "1200px",
-					borderRight: "1px solid #1f1f1f",
+					width: isMobile ? "100%" : `${sidebarWidth}px`,
+					minWidth: isMobile ? "unset" : "400px",
+					maxWidth: isMobile ? "unset" : "1200px",
+					borderRight: isMobile ? "none" : "1px solid #1f1f1f",
+					borderBottom: isMobile ? "1px solid #1f1f1f" : "none",
 					display: "flex",
 					flexDirection: "column",
 					backgroundColor: "#111111",
 					flexShrink: 0,
 				}}
 			>
-				<div style={{ padding: "32px", borderBottom: "1px solid #1f1f1f" }}>
+				<div style={{ padding: isMobile ? "16px" : "32px", borderBottom: "1px solid #1f1f1f" }}>
 					<h1 style={{ margin: 0, fontSize: "24px", fontWeight: 600, color: "#f5f5f5" }}>
 						{state.event.name}
 					</h1>
@@ -896,7 +915,7 @@ const tempIdRef = useRef(0);
 					</div>
 				</div>
 
-				<div style={{ padding: "32px", flex: 1, display: "flex", flexDirection: "column", gap: "32px", overflowY: "auto" }}>
+				<div style={{ padding: isMobile ? "16px" : "32px", flex: 1, display: "flex", flexDirection: "column", gap: isMobile ? "20px" : "32px", overflowY: "auto" }}>
 					{/* Current Team */}
 					<div>
 						<div style={{ fontSize: "12px", color: "#888", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
@@ -1630,33 +1649,35 @@ const tempIdRef = useRef(0);
 				</div>
 			</div>
 
-			{/* Resizer */}
-			<div
-				onMouseDown={handleResizeStart}
-				style={{
-					width: "4px",
-					cursor: "col-resize",
-					backgroundColor: isResizing ? "#4ade80" : "#1f1f1f",
-					flexShrink: 0,
-					transition: "background-color 0.2s",
-				}}
-				onMouseEnter={(e) => {
-					if (!isResizing) {
-						e.currentTarget.style.backgroundColor = "#333";
-					}
-				}}
-				onMouseLeave={(e) => {
-					if (!isResizing) {
-						e.currentTarget.style.backgroundColor = "#1f1f1f";
-					}
-				}}
-			/>
+			{/* Resizer (desktop only) */}
+			{!isMobile && (
+				<div
+					onMouseDown={handleResizeStart}
+					style={{
+						width: "4px",
+						cursor: "col-resize",
+						backgroundColor: isResizing ? "#4ade80" : "#1f1f1f",
+						flexShrink: 0,
+						transition: "background-color 0.2s",
+					}}
+					onMouseEnter={(e) => {
+						if (!isResizing) {
+							e.currentTarget.style.backgroundColor = "#333";
+						}
+					}}
+					onMouseLeave={(e) => {
+						if (!isResizing) {
+							e.currentTarget.style.backgroundColor = "#1f1f1f";
+						}
+					}}
+				/>
+			)}
 
 			{/* Right Side - Activity Feed and Sold Teams */}
-			<div style={{ flex: "1 1 0%", minWidth: "300px", display: "flex", flexDirection: "column", overflow: "hidden", backgroundColor: "#0f0f0f" }}>
+			<div style={{ flex: "1 1 0%", minWidth: isMobile ? "unset" : "300px", width: isMobile ? "100%" : undefined, display: "flex", flexDirection: "column", overflow: "hidden", backgroundColor: "#0f0f0f", borderTop: isMobile ? "1px solid #1f1f1f" : "none" }}>
 				{/* Activity Feed Section */}
 				<div style={{ flex: "1 1 0%", display: "flex", flexDirection: "column", overflow: "hidden", borderBottom: "1px solid #1f1f1f" }}>
-					<div style={{ padding: "24px", borderBottom: "1px solid #1f1f1f", backgroundColor: "#111111" }}>
+					<div style={{ padding: isMobile ? "16px" : "24px", borderBottom: "1px solid #1f1f1f", backgroundColor: "#111111" }}>
 						<h2 style={{ margin: 0, fontSize: "18px", fontWeight: 600, color: "#f5f5f5" }}>Activity Feed</h2>
 						<div style={{ marginTop: "4px", fontSize: "12px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>
 							{state.recentBids.length} {state.recentBids.length === 1 ? "bid" : "bids"}
@@ -1666,7 +1687,7 @@ const tempIdRef = useRef(0);
 						style={{
 							flex: 1,
 							overflowY: "auto",
-							padding: "24px",
+							padding: isMobile ? "16px" : "24px",
 							display: "flex",
 							flexDirection: "column",
 							gap: "16px",
@@ -1678,7 +1699,7 @@ const tempIdRef = useRef(0);
 								fontSize: "16px", 
 								textAlign: "center", 
 								marginTop: "32px",
-								padding: "24px",
+								padding: isMobile ? "16px" : "24px",
 								backgroundColor: "#1a1a1a",
 								borderRadius: "12px",
 								border: "1px dashed #2a2a2a"
@@ -1769,8 +1790,8 @@ const tempIdRef = useRef(0);
 				</div>
 
 				{/* Sold Teams / Owners Section */}
-				<div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", overflow: "hidden", maxHeight: "40%", borderTop: "2px solid #1f1f1f" }}>
-					<div style={{ padding: "24px", borderBottom: "1px solid #1f1f1f", backgroundColor: "#111111" }}>
+				<div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", overflow: "hidden", maxHeight: isMobile ? "none" : "40%", borderTop: "2px solid #1f1f1f" }}>
+					<div style={{ padding: isMobile ? "16px" : "24px", borderBottom: "1px solid #1f1f1f", backgroundColor: "#111111" }}>
 						<h2 style={{ margin: 0, fontSize: "18px", fontWeight: 600, color: "#f5f5f5" }}>Owned Teams</h2>
 						<div style={{ marginTop: "4px", fontSize: "12px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }}>
 							{(state.soldLots ?? []).length} {(state.soldLots ?? []).length === 1 ? "team" : "teams"}
@@ -1780,7 +1801,7 @@ const tempIdRef = useRef(0);
 						style={{
 							flex: 1,
 							overflowY: "auto",
-							padding: "24px",
+							padding: isMobile ? "16px" : "24px",
 							display: "flex",
 							flexDirection: "column",
 							gap: "12px",
@@ -1791,7 +1812,7 @@ const tempIdRef = useRef(0);
 								color: "#666", 
 								fontSize: "14px", 
 								textAlign: "center", 
-								padding: "24px",
+								padding: isMobile ? "16px" : "24px",
 								backgroundColor: "#1a1a1a",
 								borderRadius: "12px",
 								border: "1px dashed #2a2a2a"
