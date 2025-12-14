@@ -179,7 +179,12 @@ export default function Home() {
 							}
 
 							if (res.eventId) {
-								window.location.href = `/host/${res.eventId}`;
+								// Keep desktop/web flow unchanged, but on mobile default to the presenter dashboard
+								// (the audience-style host screen can feel like a participant view on small screens).
+								const isMobile =
+									typeof window !== "undefined" &&
+									(window.matchMedia?.("(max-width: 768px)").matches || window.innerWidth <= 768);
+								window.location.href = isMobile ? `/presenter/${res.eventId}` : `/host/${res.eventId}`;
 							} else {
 								throw new Error("No event ID returned");
 							}
