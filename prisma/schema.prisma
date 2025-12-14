@@ -96,6 +96,7 @@ model RuleSet {
   minIncrementCents          Int
   auctionTimerSeconds        Int
   antiSnipeExtensionSeconds  Int
+  intermissionSeconds        Int     @default(30)
   roundAllocations           Json    // e.g., { \"wildcard\": 0.04, \"divisional\": 0.06, ... } sums to 1.0
   payoutBasis                PayoutBasis @default(team_price)
   includeAnteInPot           Boolean @default(true)

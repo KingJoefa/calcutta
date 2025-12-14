@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
 				minIncrementCents: number;
 				auctionTimerSeconds: number;
 				antiSnipeExtensionSeconds: number;
+				intermissionSeconds?: number;
 				roundAllocations: Record<string, number>;
 				additiveCombos?: boolean;
 				payoutBasis?: string;
@@ -34,6 +35,12 @@ export async function POST(req: NextRequest) {
 		if (!name || !ruleSet || !players?.length) {
 			return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
 		}
+		
+		const clampInt = (val: unknown, min: number, max: number, fallback: number) => {
+			const n = typeof val === "number" ? val : Number(val);
+			if (!Number.isFinite(n)) return fallback;
+			return Math.min(max, Math.max(min, Math.trunc(n)));
+		};
 
 		// Generate random seed if not provided
 		const seed = rngSeed || `${name}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -49,6 +56,7 @@ export async function POST(req: NextRequest) {
 						minIncrementCents: ruleSet.minIncrementCents,
 						auctionTimerSeconds: ruleSet.auctionTimerSeconds,
 						antiSnipeExtensionSeconds: ruleSet.antiSnipeExtensionSeconds,
+						intermissionSeconds: clampInt(ruleSet.intermissionSeconds, 3, 180, 30),
 						roundAllocations: ruleSet.roundAllocations,
 						additiveCombos: ruleSet.additiveCombos ?? true,
 						payoutBasis: (ruleSet.payoutBasis as any) ?? "total_pot",

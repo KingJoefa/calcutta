@@ -40,7 +40,12 @@ type SoldLot = {
 
 type AuctionState = {
 	event: { id: string; name: string; status: string };
-	ruleSet: { auctionTimerSeconds: number; antiSnipeExtensionSeconds: number; minIncrementCents: number } | null;
+	ruleSet: {
+		auctionTimerSeconds: number;
+		antiSnipeExtensionSeconds: number;
+		minIncrementCents: number;
+		intermissionSeconds: number;
+	} | null;
 	players: Player[];
 	lots: Lot[];
 	currentLot: Lot | null;
@@ -284,8 +289,9 @@ const tempIdRef = useRef(0);
 							// Hide preview until countdown finishes
 							setShowNextTeamPreview(false);
 							
-							// Start 30-second countdown
-							setRefreshCountdown(30);
+							// Start intermission countdown (defaults to 30s)
+							const intermissionSeconds = prev.ruleSet?.intermissionSeconds ?? 30;
+							setRefreshCountdown(intermissionSeconds);
 							refreshCountdownRef.current = setInterval(() => {
 								setRefreshCountdown((prev) => {
 									if (prev === null || prev <= 1) {

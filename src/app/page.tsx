@@ -18,6 +18,7 @@ export default function Home() {
 	const [minIncrementDollars, setMinIncrementDollars] = useState("5");
 	const [auctionTimerSeconds, setAuctionTimerSeconds] = useState("45");
 	const [antiSnipeExtensionSeconds, setAntiSnipeExtensionSeconds] = useState("17");
+	const [intermissionSeconds, setIntermissionSeconds] = useState("30");
 
 	const parseList = (raw: string) => {
 		const cleaned = raw.replace(/,/g, "\n");
@@ -135,6 +136,10 @@ export default function Home() {
 							// Convert dollars to cents for API
 							const anteDollars = Number(data.get("anteDollars") || buyInValue);
 							const minIncDollars = Number(data.get("minIncrementDollars") || minIncrementDollars);
+							const rawIntermission = Number(data.get("intermissionSeconds") || intermissionSeconds);
+							const intermission = Number.isFinite(rawIntermission)
+								? Math.min(180, Math.max(3, Math.trunc(rawIntermission)))
+								: 30;
 
 							const payload = {
 								name: eventName,
@@ -146,6 +151,7 @@ export default function Home() {
 									antiSnipeExtensionSeconds: Number(
 										data.get("antiSnipeExtensionSeconds") || antiSnipeExtensionSeconds,
 									),
+									intermissionSeconds: intermission,
 									roundAllocations: {
 										wildcard: 0.04,
 										divisional: 0.06,
@@ -374,6 +380,24 @@ export default function Home() {
 											onInput={(e) => setAntiSnipeExtensionSeconds(e.currentTarget.value)}
 										/>
 									</div>
+									
+										<div className={styles.field}>
+											<label htmlFor="intermissionSeconds" className={styles.label}>
+												Break Between Teams (seconds)
+											</label>
+											<input
+												id="intermissionSeconds"
+												name="intermissionSeconds"
+												type="number"
+												className={styles.input}
+												min="3"
+												max="180"
+												placeholder="30"
+												value={intermissionSeconds}
+												onInput={(e) => setIntermissionSeconds(e.currentTarget.value)}
+											/>
+											<span className={styles.helperText}>How long to pause between sold teams before the next team becomes available (3–180s).</span>
+										</div>
 									</>
 								)}
 							</div>
@@ -387,7 +411,7 @@ export default function Home() {
 						</div>
 
 						<div className={styles.rulesSummary}>
-							Rules summary: Timer {auctionTimerSeconds || "—"}s • Min increment ${minIncrementDollars || "—"} • Anti-snipe {antiSnipeExtensionSeconds || "—"}s
+							Rules summary: Timer {auctionTimerSeconds || "—"}s • Break {intermissionSeconds || "—"}s • Min increment ${minIncrementDollars || "—"} • Anti-snipe {antiSnipeExtensionSeconds || "—"}s
 						</div>
 
 						{error && <div className={styles.errorBox}>{error}</div>}

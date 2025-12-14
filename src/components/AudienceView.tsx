@@ -21,7 +21,7 @@ type Lot = {
 
 type AuctionState = {
 	event: { id: string; name: string; status: string };
-	ruleSet: { minIncrementCents: number } | null;
+	ruleSet: { minIncrementCents: number; intermissionSeconds: number } | null;
 	currentLot: Lot | null;
 	players: Array<{ id: string; name: string }>;
 };
@@ -195,8 +195,8 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 						clearInterval(refreshCountdownRef.current);
 					}
 					
-					// Start 30-second countdown before auto-refreshing
-					setRefreshCountdown(30);
+					// Start intermission countdown before auto-refreshing (defaults to 30s)
+					setRefreshCountdown(state.ruleSet?.intermissionSeconds ?? 30);
 					refreshCountdownRef.current = setInterval(() => {
 						setRefreshCountdown((prev) => {
 							if (prev === null || prev <= 1) {
