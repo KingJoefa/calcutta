@@ -52,7 +52,7 @@ export async function POST(
 				data: {
 					eventId: lot.eventId,
 					lotId: lot.id,
-					playerId: lot.highBidderId,
+					playerId: lot.highBidderId!,
 					amountCents: lot.currentBidCents,
 				},
 			});
@@ -62,7 +62,7 @@ export async function POST(
 				where: { id: lot.id },
 				data: {
 					status: "sold",
-					acceptedBidderId: lot.highBidderId,
+					acceptedBidderId: lot.highBidderId!,
 				},
 			});
 
@@ -70,7 +70,7 @@ export async function POST(
 			await tx.ledgerEntry.create({
 				data: {
 					eventId: lot.eventId,
-					playerId: lot.highBidderId,
+					playerId: lot.highBidderId!,
 					type: "sale",
 					amountCents: lot.currentBidCents,
 					note: `Sale for lot ${lot.id}`,

@@ -24,7 +24,7 @@ export function HostControls(props: {
 		props.players[0]?.id ?? "",
 	);
 	const [bidAmount, setBidAmount] = useState(0);
-	const wsRef = useRef<WebSocket | null>(null);
+	const wsRef = useRef<ReturnType<typeof connectWs> | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	const currentLot = useMemo(

@@ -45,6 +45,8 @@ async function getAuctionState(eventId: string) {
 					highBidderId: currentLot.highBidderId,
 					openedAt: currentLot.openedAt?.toISOString() ?? null,
 					closesAt: currentLot.closesAt?.toISOString() ?? null,
+					pausedAt: currentLot.pausedAt?.toISOString() ?? null,
+					pauseDurationSeconds: currentLot.pauseDurationSeconds,
 					team: {
 						id: currentLot.team.id,
 						name: currentLot.team.name,

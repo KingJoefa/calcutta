@@ -1,6 +1,7 @@
 // WebSocket server wrapper for compatibility
 // Uses event broadcaster (SSE) for Vercel compatibility
 import { broadcast as eventBroadcast } from "./eventBroadcaster";
+import type { WebSocket as WsWebSocket } from "ws";
 
 // For local development, optionally use WebSocket server
 // For Vercel production, use SSE (eventBroadcaster)
@@ -21,7 +22,8 @@ if (USE_WEBSOCKET) {
 		const httpServer = http.createServer();
 		const wss = new WebSocketServer({ server: httpServer });
 
-		type Client = WebSocket & { eventId?: string };
+		// Use ws' WebSocket type (NOT the browser WebSocket type)
+		type Client = WsWebSocket & { eventId?: string };
 
 		wss.on("connection", (ws: Client, req: any) => {
 			try {
@@ -41,9 +43,10 @@ if (USE_WEBSOCKET) {
 
 		const broadcast = (eventId: string, type: string, payload: unknown) => {
 			const message = JSON.stringify({ type, eventId, payload, ts: Date.now() });
-			wss.clients.forEach((client) => {
+			const OPEN = 1; // ws.WebSocket.OPEN
+			wss.clients.forEach((client: WsWebSocket) => {
 				const c = client as Client;
-				if (c.readyState === WebSocket.OPEN && c.eventId === eventId) {
+				if (c.readyState === OPEN && c.eventId === eventId) {
 					c.send(message);
 				}
 			});
