@@ -121,8 +121,13 @@ export function connectWs(
 					return;
 				}
 
-				// lot opened (switch to open or lot id changes)
-				if (curId && (last.currentLotId !== curId || (last.currentLotStatus !== "open" && curStatus === "open"))) {
+				// lot opened: ONLY emit when the current lot is actually open.
+				// Do NOT emit on lot-id change alone (pending lots become currentLot after a sale).
+				if (
+					curId &&
+					curStatus === "open" &&
+					(last.currentLotId !== curId || last.currentLotStatus !== "open")
+				) {
 					emit("lot_opened", { lotId: curId, open: true, closesAt: curClosesAt });
 				}
 
