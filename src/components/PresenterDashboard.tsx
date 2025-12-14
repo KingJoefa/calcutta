@@ -90,6 +90,8 @@ const tempIdRef = useRef(0);
 	const highBidder = currentLot?.highBidderId
 		? state.players.find((p) => p.id === currentLot.highBidderId)?.name ?? "Unknown"
 		: null;
+	
+	const isIntermission = refreshCountdown !== null;
 
 	// Reset bid input when lot changes
 	useEffect(() => {
@@ -1301,6 +1303,49 @@ const tempIdRef = useRef(0);
 					<div style={{ marginTop: "24px", display: "flex", flexDirection: "column", gap: "12px" }}>
 						{currentLot && (
 							<>
+								{isIntermission && (
+									<div
+										style={{
+											padding: "12px",
+											border: "1px solid #333",
+											borderRadius: "8px",
+											backgroundColor: "#0a0a0a",
+											color: "#e5e5e5",
+										}}
+									>
+										<div style={{ fontWeight: 700, marginBottom: "6px" }}>Intermission</div>
+										<div style={{ color: "#a3a3a3", marginBottom: "10px" }}>
+											Next team available in <span style={{ color: "#f59e0b", fontWeight: 700 }}>{refreshCountdown}s</span>
+										</div>
+										<button
+											onClick={() => {
+												// End countdown early and move to next pending lot
+												if (refreshCountdownRef.current) {
+													clearInterval(refreshCountdownRef.current);
+													refreshCountdownRef.current = null;
+												}
+												setRefreshCountdown(null);
+												setState((prevState) => {
+													const nextPendingLot = prevState.lots.find((l) => l.status === "pending") ?? null;
+													return { ...prevState, currentLot: nextPendingLot };
+												});
+												setShowNextTeamPreview(true);
+											}}
+											style={{
+												padding: "10px 14px",
+												backgroundColor: "#2a2a2a",
+												color: "#e5e5e5",
+												border: "1px solid #444",
+												borderRadius: "8px",
+												fontSize: "14px",
+												fontWeight: 600,
+												cursor: "pointer",
+											}}
+										>
+											Skip Break (Show Next Team)
+										</button>
+									</div>
+								)}
 								{currentLot.status !== "open" ? (
 									<>
 										{/* Opening Bid Input (when team is pending) */}
@@ -1429,6 +1474,10 @@ const tempIdRef = useRef(0);
 										</div>
 										<button
 											onClick={async () => {
+												if (isIntermission) {
+													alert("Intermission in progress. Please wait for the next team, or click 'Skip Break'.");
+													return;
+												}
 												if (!selectedPlayerId) {
 													alert("Please select a player for the opening bid");
 													return;
