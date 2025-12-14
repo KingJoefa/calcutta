@@ -43,6 +43,7 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 	const refreshCountdownRef = useRef<NodeJS.Timeout | null>(null);
 	const searchParams = useSearchParams();
+	const isHostMode = searchParams.get("host") === "1" || searchParams.get("mode") === "host";
 	const lockedPlayerName = lockedPlayerId
 		? state.players.find((p) => p.id === lockedPlayerId)?.name ?? "Player"
 		: null;
@@ -291,7 +292,7 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 		if (!currentLot || !selectedPlayerId || !bidAmount) return;
 		
 		// Prevent participants from bidding when timer is at 0
-		if (timeRemaining === 0) {
+		if (timeRemaining === 0 && !isHostMode) {
 			alert("Bidding is closed. Only the host can place bids when the timer reaches 0.");
 			return;
 		}
@@ -322,6 +323,28 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 			}
 		} catch (err) {
 			alert("Failed to place bid");
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
+	
+	const handleSellTeam = async () => {
+		if (!currentLot || currentLot.status !== "open") return;
+		if (!currentLot.highBidderId) {
+			alert("No bid to accept");
+			return;
+		}
+		if (isSubmitting) return;
+		setIsSubmitting(true);
+		try {
+			const res = await fetch(`/api/lots/${currentLot.id}/accept`, { method: "POST" });
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				alert(json.error || "Failed to sell team");
+				return;
+			}
+		} catch {
+			alert("Failed to sell team");
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -607,7 +630,7 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 								margin: "0 auto",
 							}}
 						>
-							{timeRemaining === 0 ? (
+							{timeRemaining === 0 && !isHostMode ? (
 								<div
 									style={{
 										padding: "16px",
@@ -638,6 +661,42 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 								</div>
 							) : (
 								<>
+									{isHostMode && timeRemaining === 0 && (
+										<div
+											style={{
+												padding: "14px",
+												backgroundColor: "#fffbeb",
+												border: "2px solid #f59e0b",
+												borderRadius: "10px",
+											}}
+										>
+											<div style={{ fontSize: "14px", fontWeight: 700, color: "#92400e" }}>
+												Host Controls
+											</div>
+											<div style={{ fontSize: "12px", color: "#92400e", marginTop: "6px" }}>
+												Timer is at 0 — you can still finalize the current team here.
+											</div>
+											<button
+												onClick={handleSellTeam}
+												disabled={!currentLot.highBidderId || isSubmitting}
+												style={{
+													marginTop: "10px",
+													width: "100%",
+													padding: "14px 18px",
+													fontSize: "16px",
+													fontWeight: 700,
+													borderRadius: "10px",
+													border: "none",
+													backgroundColor: currentLot.highBidderId ? "#16a34a" : "#9ca3af",
+													color: "#fff",
+													cursor: currentLot.highBidderId && !isSubmitting ? "pointer" : "not-allowed",
+													opacity: isSubmitting ? 0.85 : 1,
+												}}
+											>
+												{isSubmitting ? "Selling..." : "Sell Team & Advance"}
+											</button>
+										</div>
+									)}
 									{lockedPlayerId ? null : tokenStatus === "pending" ? (
 										<div style={{ textAlign: "center", fontSize: "14px", color: "#1d4ed8" }}>
 											Verifying invite link...
