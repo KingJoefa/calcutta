@@ -45,6 +45,18 @@ This guide explains how to run a Football Calcutta Style auction using the web a
    - **⚠️ IMPORTANT**: Do not click "Import" again after randomization
    - The order is deterministic based on the event's RNG seed
 
+### 2b. Update NFL Playoff Preset Weekly
+
+To keep the home-page preset current during the season:
+
+1. Run `npm run update:nfl-playoff-preset`
+2. The script pulls the latest ESPN standings for the 2025 season
+3. It auto-loads seeds 1–9 through Week 17, then drops to the final 7 seeds after Week 18
+
+Optional overrides:
+- `npm run update:nfl-playoff-preset -- --max-seed 9`
+- `npm run update:nfl-playoff-preset -- --final`
+
 ---
 
 ## Running the Auction
@@ -279,5 +291,4 @@ Net Payout = (Winnings from teams) - (Total Spent) - (Ante)
 
 **Last Updated**: Current session
 **App Version**: Next.js 16.0.1
-
 

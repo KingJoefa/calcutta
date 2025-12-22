@@ -74,23 +74,28 @@ export const TEAM_PRESETS: Record<string, TeamPreset> = {
 			"Panama (Group L #4)",
 		],
 	},
+	// Updated via scripts/update-nfl-playoff-preset.mjs on 2025-12-21 (Week 16, seeds 1-9)
 	football_playoffs: {
-		name: "Football Playoffs (14 teams)",
+		name: "Football Playoffs (AFC/NFC Seeds)",
 		teams: [
-			"Kansas City Chiefs (AFC #1)",
-			"Buffalo Bills (AFC #2)",
-			"Baltimore Ravens (AFC #3)",
-			"Houston Texans (AFC #4)",
-			"Cleveland Browns (AFC #5)",
-			"Miami Dolphins (AFC #6)",
-			"Pittsburgh Steelers (AFC #7)",
-			"San Francisco 49ers (NFC #1)",
-			"Dallas Cowboys (NFC #2)",
-			"Detroit Lions (NFC #3)",
-			"Tampa Bay Buccaneers (NFC #4)",
-			"Philadelphia Eagles (NFC #5)",
-			"Los Angeles Rams (NFC #6)",
+			"Denver Broncos (AFC #1)",
+			"New England Patriots (AFC #2)",
+			"Jacksonville Jaguars (AFC #3)",
+			"Pittsburgh Steelers (AFC #4)",
+			"Los Angeles Chargers (AFC #5)",
+			"Buffalo Bills (AFC #6)",
+			"Houston Texans (AFC #7)",
+			"Indianapolis Colts (AFC #8)",
+			"Baltimore Ravens (AFC #9)",
+			"Seattle Seahawks (NFC #1)",
+			"Chicago Bears (NFC #2)",
+			"Philadelphia Eagles (NFC #3)",
+			"Carolina Panthers (NFC #4)",
+			"Los Angeles Rams (NFC #5)",
+			"San Francisco 49ers (NFC #6)",
 			"Green Bay Packers (NFC #7)",
+			"Detroit Lions (NFC #8)",
+			"Minnesota Vikings (NFC #9)",
 		],
 	},
 };
@@ -102,4 +107,3 @@ export function getPresetTeams(presetKey: string): string[] {
 export function getPresetName(presetKey: string): string {
 	return TEAM_PRESETS[presetKey]?.name || "";
 }
-
