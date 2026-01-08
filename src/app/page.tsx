@@ -9,10 +9,11 @@ import styles from "./page.module.css";
 export default function Home() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [selectedPreset, setSelectedPreset] = useState<string>("");
+	const DEFAULT_TEAM_PRESET = "football_playoffs";
+	const [selectedPreset, setSelectedPreset] = useState<string>(DEFAULT_TEAM_PRESET);
 	const [showAdvanced, setShowAdvanced] = useState(false);
 	const [playersInput, setPlayersInput] = useState("");
-	const [teamsInput, setTeamsInput] = useState("");
+	const [teamsInput, setTeamsInput] = useState(() => getPresetTeams(DEFAULT_TEAM_PRESET).join("\n"));
 	const [playersFocused, setPlayersFocused] = useState(false);
 	const [buyIn, setBuyIn] = useState("10");
 	const [minIncrementDollars, setMinIncrementDollars] = useState("5");

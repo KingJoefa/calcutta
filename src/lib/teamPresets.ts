@@ -74,7 +74,7 @@ export const TEAM_PRESETS: Record<string, TeamPreset> = {
 			"Panama (Group L #4)",
 		],
 	},
-	// Updated via scripts/update-nfl-playoff-preset.mjs on 2025-12-21 (Week 16, seeds 1-9)
+	// Updated via scripts/update-nfl-playoff-preset.mjs on 2026-01-08 (Final seeds 1-7)
 	football_playoffs: {
 		name: "Football Playoffs (AFC/NFC Seeds)",
 		teams: [
@@ -82,11 +82,9 @@ export const TEAM_PRESETS: Record<string, TeamPreset> = {
 			"New England Patriots (AFC #2)",
 			"Jacksonville Jaguars (AFC #3)",
 			"Pittsburgh Steelers (AFC #4)",
-			"Los Angeles Chargers (AFC #5)",
+			"Houston Texans (AFC #5)",
 			"Buffalo Bills (AFC #6)",
-			"Houston Texans (AFC #7)",
-			"Indianapolis Colts (AFC #8)",
-			"Baltimore Ravens (AFC #9)",
+			"Los Angeles Chargers (AFC #7)",
 			"Seattle Seahawks (NFC #1)",
 			"Chicago Bears (NFC #2)",
 			"Philadelphia Eagles (NFC #3)",
@@ -94,8 +92,6 @@ export const TEAM_PRESETS: Record<string, TeamPreset> = {
 			"Los Angeles Rams (NFC #5)",
 			"San Francisco 49ers (NFC #6)",
 			"Green Bay Packers (NFC #7)",
-			"Detroit Lions (NFC #8)",
-			"Minnesota Vikings (NFC #9)",
 		],
 	},
 };
