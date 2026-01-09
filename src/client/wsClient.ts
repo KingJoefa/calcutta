@@ -1,3 +1,5 @@
+import { monitoredFetch } from "../lib/monitoring";
+
 export type Message = {
 	type: string;
 	eventId: string;
@@ -88,7 +90,7 @@ export function connectWs(
 
 		const pollOnce = async () => {
 			try {
-				const res = await fetch(`/api/events/${eventId}/state`, { cache: "no-store" as RequestCache });
+				const res = await monitoredFetch(`/api/events/${eventId}/state`, { cache: "no-store" as RequestCache });
 				if (!res.ok) throw new Error(`state fetch failed: ${res.status}`);
 				const state = (await res.json()) as StateResponse;
 

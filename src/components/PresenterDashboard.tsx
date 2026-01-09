@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import { connectWs, type Message, type ConnectionStatus } from "../client/wsClient";
 import { AuctionTimeline } from "./AuctionTimeline";
+import { MonitoringDashboard } from "./MonitoringDashboard";
+import { monitoredFetch } from "../lib/monitoring";
 
 type Player = { id: string; name: string; handle?: string | null };
 type Team = { id: string; name: string; seed?: number | null; region?: string | null; bracket?: string | null };
@@ -505,7 +507,7 @@ const tempIdRef = useRef(0);
 		opts?: { label?: string; retry?: number },
 	): Promise<boolean> => {
 		const attempt = async (): Promise<{ ok: boolean; error?: string }> => {
-			const res = await fetch(url, {
+			const res = await monitoredFetch(url, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: body ? JSON.stringify(body) : undefined,
@@ -535,7 +537,7 @@ const tempIdRef = useRef(0);
 	const loadInviteLinks = async () => {
 		try {
 			setLoadingInvites(true);
-			const res = await fetch(`/api/events/${eventId}/player-links`);
+			const res = await monitoredFetch(`/api/events/${eventId}/player-links`);
 			if (!res.ok) throw new Error("Failed to fetch links");
 			const data = await res.json();
 			setInviteLinks(data.players ?? []);
@@ -633,7 +635,7 @@ const tempIdRef = useRef(0);
 		if (!currentLot || currentLot.status !== "open") return;
 
 		try {
-			const res = await fetch(`/api/lots/${currentLot.id}/pause`, {
+			const res = await monitoredFetch(`/api/lots/${currentLot.id}/pause`, {
 				method: "POST",
 			});
 
@@ -653,7 +655,7 @@ const tempIdRef = useRef(0);
 
 	const handleDownloadRecap = async () => {
 		try {
-			const res = await fetch(`/api/events/${eventId}/recap`);
+			const res = await monitoredFetch(`/api/events/${eventId}/recap`);
 			if (!res.ok) {
 				const error = await res.json().catch(() => ({}));
 				alert(error.error || "Failed to download recap");
@@ -1512,7 +1514,7 @@ const tempIdRef = useRef(0);
 													alert(`Opening bid must be at least $${(minBid / 100).toFixed(2)}`);
 													return;
 												}
-												const res = await fetch(`/api/lots/${currentLot.id}/open`, {
+												const res = await monitoredFetch(`/api/lots/${currentLot.id}/open`, {
 													method: "POST",
 													headers: { "content-type": "application/json" },
 													body: JSON.stringify({
@@ -1854,6 +1856,9 @@ const tempIdRef = useRef(0);
 				</div>
 			</div>
 			</div>
+
+			{/* Performance Monitoring Dashboard */}
+			<MonitoringDashboard />
 		</div>
 	);
 }
