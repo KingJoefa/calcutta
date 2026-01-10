@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { connectWs, type Message, type ConnectionStatus } from "../client/wsClient";
 import { AuctionTimeline } from "./AuctionTimeline";
+import { playBuzzer, playWarningBeep, initAudio } from "../lib/audioEffects";
 
 type Team = { id: string; name: string; seed?: number | null; region?: string | null; bracket?: string | null };
 type Lot = {
@@ -53,12 +54,40 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 	const wsConnectionRef = useRef<ReturnType<typeof connectWs> | null>(null);
 	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 	const refreshCountdownRef = useRef<NodeJS.Timeout | null>(null);
+	const buzzerPlayedRef = useRef<boolean>(false);
+	const warningPlayedRef = useRef<boolean>(false);
+	const currentLotIdRef = useRef<string | null>(null);
 	const searchParams = useSearchParams();
 	const isHostMode = searchParams.get("host") === "1" || searchParams.get("mode") === "host";
 	const lockedPlayerName = lockedPlayerId
 		? state.players.find((p) => p.id === lockedPlayerId)?.name ?? "Player"
 		: null;
 	
+	// Initialize audio on first user interaction
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+
+		const initOnClick = () => {
+			initAudio();
+			document.removeEventListener('click', initOnClick);
+		};
+
+		document.addEventListener('click', initOnClick);
+
+		return () => {
+			document.removeEventListener('click', initOnClick);
+		};
+	}, []);
+
+	// Reset buzzer flags when lot changes
+	useEffect(() => {
+		if (currentLot?.id !== currentLotIdRef.current) {
+			currentLotIdRef.current = currentLot?.id ?? null;
+			buzzerPlayedRef.current = false;
+			warningPlayedRef.current = false;
+		}
+	}, [state.currentLot?.id]);
+
 	// Mobile-only UI helpers (do not change desktop behavior)
 	useEffect(() => {
 		if (typeof window === "undefined") return;
@@ -159,6 +188,18 @@ export function AudienceView({ eventId, initialState }: { eventId: string; initi
 			const now = Date.now();
 			const remaining = Math.max(0, Math.floor((closesAt - now) / 1000));
 			setTimeRemaining(remaining);
+
+			// Play warning beep at 10 seconds (once)
+			if (remaining === 10 && !warningPlayedRef.current && !currentLot.pausedAt) {
+				warningPlayedRef.current = true;
+				playWarningBeep();
+			}
+
+			// Play buzzer when timer expires (once)
+			if (remaining === 0 && !buzzerPlayedRef.current && !currentLot.pausedAt) {
+				buzzerPlayedRef.current = true;
+				playBuzzer();
+			}
 		};
 
 		updateTimer();

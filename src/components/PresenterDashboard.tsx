@@ -5,6 +5,7 @@ import { connectWs, type Message, type ConnectionStatus } from "../client/wsClie
 import { AuctionTimeline } from "./AuctionTimeline";
 import { MonitoringDashboard } from "./MonitoringDashboard";
 import { monitoredFetch } from "../lib/monitoring";
+import { playBuzzer, playWarningBeep, initAudio } from "../lib/audioEffects";
 
 type Player = { id: string; name: string; handle?: string | null };
 type Team = { id: string; name: string; seed?: number | null; region?: string | null; bracket?: string | null };
@@ -81,6 +82,36 @@ const refreshCountdownRef = useRef<NodeJS.Timeout | null>(null);
 const resizeStartXRef = useRef<number>(0);
 const resizeStartWidthRef = useRef<number>(0);
 const tempIdRef = useRef(0);
+const buzzerPlayedRef = useRef<boolean>(false);
+const warningPlayedRef = useRef<boolean>(false);
+const currentLotIdRef = useRef<string | null>(null);
+
+	const currentLot = state.currentLot;
+
+	// Initialize audio on first user interaction
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+
+		const initOnClick = () => {
+			initAudio();
+			document.removeEventListener('click', initOnClick);
+		};
+
+		document.addEventListener('click', initOnClick);
+
+		return () => {
+			document.removeEventListener('click', initOnClick);
+		};
+	}, []);
+
+	// Reset buzzer flags when lot changes
+	useEffect(() => {
+		if (currentLot?.id !== currentLotIdRef.current) {
+			currentLotIdRef.current = currentLot?.id ?? null;
+			buzzerPlayedRef.current = false;
+			warningPlayedRef.current = false;
+		}
+	}, [currentLot?.id]);
 
 	// Mobile responsiveness: stack panes on small screens (keep desktop unchanged)
 	useEffect(() => {
@@ -97,8 +128,6 @@ const tempIdRef = useRef(0);
 			else mq.removeListener(update);
 		};
 	}, []);
-
-	const currentLot = state.currentLot;
 	
 	// Find next pending team (only used when showNextTeamPreview is true)
 	const nextPendingLot = useMemo(() => {
@@ -169,6 +198,18 @@ const tempIdRef = useRef(0);
 			const now = Date.now();
 			const remaining = Math.max(0, Math.floor((closesAt - now) / 1000));
 			setTimeRemaining(remaining);
+
+			// Play warning beep at 10 seconds (once)
+			if (remaining === 10 && !warningPlayedRef.current && !currentLot.pausedAt) {
+				warningPlayedRef.current = true;
+				playWarningBeep();
+			}
+
+			// Play buzzer when timer expires (once)
+			if (remaining === 0 && !buzzerPlayedRef.current && !currentLot.pausedAt) {
+				buzzerPlayedRef.current = true;
+				playBuzzer();
+			}
 		};
 
 		updateTimer();
